@@ -1,0 +1,133 @@
+{
+  "testQueries": [
+    {
+      "id": "Q1",
+      "category": "factual",
+      "query": "What is the maximum LTV ratio for commercial real estate in Zone B?",
+      "userRole": "Senior Loan Officer",
+      "expectedPolicyId": "CRE-001-v2.3",
+      "expectedAnswer": "75% for stabilized properties",
+      "expectedPrecondition": "Property must be stabilized",
+      "expectedException": "80% with DSCR ≥1.35 and committee approval",
+      "shouldSucceed": true
+    },
+    {
+      "id": "Q2",
+      "category": "factual",
+      "query": "What is the maximum debt-to-income ratio for residential mortgages?",
+      "userRole": "Senior Loan Officer",
+      "expectedPolicyId": "RES-045-v1.8",
+      "expectedAnswer": "43%",
+      "expectedPrecondition": "Minimum credit score of 680",
+      "expectedException": "DTI up to 50% with compensating factors",
+      "shouldSucceed": true
+    },
+    {
+      "id": "Q3",
+      "category": "factual",
+      "query": "What is the maximum auto loan term?",
+      "userRole": "Junior Officer",
+      "expectedPolicyId": "AUTO-012-v3.1",
+      "expectedAnswer": "72 months",
+      "expectedPrecondition": "None specified",
+      "expectedException": "None specified",
+      "shouldSucceed": true
+    },
+    {
+      "id": "Q4",
+      "category": "rbac_violation",
+      "query": "What are Basel III capital requirements?",
+      "userRole": "Junior Officer",
+      "expectedPolicyId": null,
+      "expectedAnswer": null,
+      "shouldSucceed": false,
+      "expectedRefusalReason": "Insufficient access permissions"
+    },
+    {
+      "id": "Q5",
+      "category": "rbac_success",
+      "query": "What are Basel III capital requirements?",
+      "userRole": "Risk Officer",
+      "expectedPolicyId": "BASEL-089-v4.2",
+      "expectedAnswer": "CET1 minimum 4.5%, Total capital minimum 8%",
+      "shouldSucceed": true
+    },
+    {
+      "id": "Q6",
+      "category": "out_of_scope",
+      "query": "What is the LTV for personal watercraft loans?",
+      "userRole": "Senior Loan Officer",
+      "expectedPolicyId": null,
+      "expectedAnswer": null,
+      "shouldSucceed": false,
+      "expectedRefusalReason": "No definitive policy found"
+    },
+    {
+      "id": "Q7",
+      "category": "conditional",
+      "query": "When can DTI exceed 43% for residential mortgages?",
+      "userRole": "Credit Manager",
+      "expectedPolicyId": "RES-045-v1.8",
+      "expectedAnswer": "Up to 50% with compensating factors",
+      "expectedPrecondition": "Minimum credit score of 680",
+      "expectedException": "12 months PITI reserves and 5+ years employment",
+      "shouldSucceed": true
+    },
+    {
+      "id": "Q8",
+      "category": "factual",
+      "query": "What are the interest rate tiers for auto loans?",
+      "userRole": "Senior Loan Officer",
+      "expectedPolicyId": "AUTO-012-v3.1",
+      "expectedAnswer": "Tier 1 (740+): Prime, Tier 2 (680-739): Prime+1.5%, Tier 3 (620-679): Prime+3.5%",
+      "shouldSucceed": true
+    },
+    {
+      "id": "Q9",
+      "category": "conditional",
+      "query": "What guarantees are required for small business loans?",
+      "userRole": "Credit Manager",
+      "expectedPolicyId": "SBL-023-v1.5",
+      "expectedAnswer": "Personal guarantee from owners with >20% equity",
+      "shouldSucceed": true
+    },
+    {
+      "id": "Q10",
+      "category": "factual",
+      "query": "How many years of business operation are required for small business loans?",
+      "userRole": "Senior Loan Officer",
+      "expectedPolicyId": "SBL-023-v1.5",
+      "expectedAnswer": "Minimum two years",
+      "expectedException": "12 months for SBA-backed with 720+ credit",
+      "shouldSucceed": true
+    }
+  ],
+  "evaluationCriteria": {
+    "correctness": {
+      "perfect": 4,
+      "minor_omission": 3,
+      "partially_correct": 2,
+      "wrong_policy": 1,
+      "no_retrieval": 0
+    },
+    "citation": {
+      "complete": 3,
+      "partial": 2,
+      "minimal": 1,
+      "none": 0
+    },
+    "grounding": {
+      "fully_grounded": 3,
+      "minor_paraphrase": 2,
+      "some_external_info": 1,
+      "hallucination": 0
+    }
+  },
+  "targetMetrics": {
+    "retrievalAccuracy": 0.87,
+    "citationCoverage": 1.0,
+    "rbacEnforcement": 1.0,
+    "refusalPrecision": 0.90,
+    "averageScore": 8.5
+  }
+}

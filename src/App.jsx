@@ -1,692 +1,478 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { Search, Shield, FileText, AlertTriangle, CheckCircle, XCircle, User, Clock, Database, Lock, ChevronDown, ChevronUp, ExternalLink, Info, Activity, Zap, Sparkles, Lightbulb } from 'lucide-react';
-
-const POLICY_DATABASE = {
-  'CRE-001-v2.3': {
-    name: 'Commercial Real Estate Lending Policy',
-    version: 'v2.3',
-    effectiveDate: '2024-01-15',
-    sections: {
-      '4.2.1': {
-        text: 'Maximum Loan-to-Value (LTV) ratio for commercial real estate in Zone B shall not exceed 75% for stabilized properties.',
-        page: 12,
-        conditions: ['Property must be stabilized', 'Independent appraisal required'],
-        exceptions: ['LTV may reach 80% with DSCR >=1.35 and Senior Credit Committee approval']
-      }
-    },
-    requiredRole: 'Senior Loan Officer',
-    riskLevel: 'Medium'
-  },
-  'RES-003-v1.8': {
-    name: 'Residential Mortgage Underwriting Standards',
-    version: 'v1.8',
-    effectiveDate: '2024-02-01',
-    sections: {
-      '2.1.3': {
-        text: 'Minimum credit score for conventional residential mortgages is 620. Borrowers must demonstrate 24 months of stable employment history.',
-        page: 8,
-        conditions: ['24 months stable employment', 'Debt-to-Income ratio <=43%'],
-        exceptions: ['DTI may reach 50% with compensating factors: 12+ months reserves, credit score >720, or 20%+ down payment']
-      }
-    },
-    requiredRole: 'Junior Officer',
-    riskLevel: 'Low'
-  },
-  'BASEL-III-2024': {
-    name: 'Basel III Capital Requirements Framework',
-    version: 'v4.2',
-    effectiveDate: '2024-01-01',
-    sections: {
-      '3.1.1': {
-        text: 'Common Equity Tier 1 (CET1) capital ratio must be maintained at minimum 4.5% of risk-weighted assets. Capital conservation buffer of 2.5% must be maintained above minimum requirements.',
-        page: 45,
-        conditions: ['Applies to all corporate exposures', 'Monthly reporting required'],
-        exceptions: []
-      }
-    },
-    requiredRole: 'Risk Officer',
-    riskLevel: 'High'
-  },
-  'AUTO-LOAN-v2.1': {
-    name: 'Auto Loan Origination Policy',
-    version: 'v2.1',
-    effectiveDate: '2023-12-01',
-    sections: {
-      '1.2.4': {
-        text: 'Maximum auto loan term is 72 months for new vehicles and 60 months for used vehicles. Prime rate applies to borrowers with credit score >=720.',
-        page: 5,
-        conditions: ['Vehicle age restrictions apply', 'Maximum LTV 110% for new vehicles'],
-        exceptions: ['Extended terms available for electric vehicles up to 84 months']
-      }
-    },
-    requiredRole: 'Junior Officer',
-    riskLevel: 'Low'
-  }
-};
-
-const ROLE_HIERARCHY = {
-  'Junior Officer': ['Junior Officer'],
-  'Senior Loan Officer': ['Junior Officer', 'Senior Loan Officer'],
-  'Credit Manager': ['Junior Officer', 'Senior Loan Officer', 'Credit Manager'],
-  'Risk Officer': ['Junior Officer', 'Senior Loan Officer', 'Credit Manager', 'Risk Officer'],
-  'Senior Management': ['Junior Officer', 'Senior Loan Officer', 'Credit Manager', 'Risk Officer', 'Senior Management']
-};
-
-const processQuery = (query, userRole) => {
-  let matchedPolicy = null;
-  let matchedSection = null;
-  let confidence = 0;
-
-  const queryLower = query.toLowerCase();
-
-  if (queryLower.includes('ltv') && queryLower.includes('commercial')) {
-    matchedPolicy = POLICY_DATABASE['CRE-001-v2.3'];
-    matchedSection = matchedPolicy.sections['4.2.1'];
-    confidence = 92;
-  } else if (queryLower.includes('basel') || queryLower.includes('capital requirement')) {
-    matchedPolicy = POLICY_DATABASE['BASEL-III-2024'];
-    matchedSection = matchedPolicy.sections['3.1.1'];
-    confidence = 88;
-  } else if (queryLower.includes('credit score') && queryLower.includes('mortgage')) {
-    matchedPolicy = POLICY_DATABASE['RES-003-v1.8'];
-    matchedSection = matchedPolicy.sections['2.1.3'];
-    confidence = 90;
-  } else if (queryLower.includes('auto loan')) {
-    matchedPolicy = POLICY_DATABASE['AUTO-LOAN-v2.1'];
-    matchedSection = matchedPolicy.sections['1.2.4'];
-    confidence = 85;
-  }
-
-  if (matchedPolicy) {
-    const hasAccess = ROLE_HIERARCHY[userRole].includes(matchedPolicy.requiredRole);
-    
-    if (!hasAccess) {
-      return {
-        type: 'rbac_denial',
-        message: 'Insufficient access permissions',
-        policyName: matchedPolicy.name,
-        requiredRole: matchedPolicy.requiredRole,
-        recommendedAction: `Consult ${matchedPolicy.requiredRole} or Risk Officer for this information`
-      };
-    }
-  }
-
-  if (!matchedPolicy || confidence < 70) {
-    return {
-      type: 'no_policy',
-      message: 'No definitive policy found for this query',
-      recommendedAction: 'Please refine your query or consult the Policy Documentation Team',
-      searchedTerms: query
-    };
-  }
-
-  return {
-    type: 'success',
-    answer: matchedSection.text,
-    citation: {
-      policyId: Object.keys(POLICY_DATABASE).find(key => POLICY_DATABASE[key] === matchedPolicy),
-      policyName: matchedPolicy.name,
-      version: matchedPolicy.version,
-      section: Object.keys(matchedPolicy.sections)[0],
-      page: matchedSection.page,
-      effectiveDate: matchedPolicy.effectiveDate
-    },
-    preconditions: matchedSection.conditions,
-    exceptions: matchedSection.exceptions,
-    confidence: confidence,
-    riskLevel: matchedPolicy.riskLevel
-  };
-};
+import React, { useState, useCallback, useEffect } from 'react';
+import { Search, Shield, Sparkles, TrendingUp, CheckCircle, Zap, Bell, User, Activity, FileText, Send } from 'lucide-react';
+import { queryPolicy, healthCheck } from './services/api';
+import './index.css';
 
 function App() {
   const [userRole, setUserRole] = useState('Senior Loan Officer');
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('checking');
   const [auditLog, setAuditLog] = useState([]);
-  const [showAudit, setShowAudit] = useState(false);
-  const [showArchitecture, setShowArchitecture] = useState(false);
 
-  const searchPolicy = useCallback(async () => {
+  // Stats
+  const stats = {
+    policiesIndexed: 847,
+    citationCoverage: 100,
+    avgResponse: 2.3,
+    refusalRate: 8,
+  };
+
+  useEffect(() => {
+    checkBackend();
+  }, []);
+
+  const checkBackend = async () => {
+    try {
+      await healthCheck();
+      setBackendStatus('connected');
+    } catch {
+      setBackendStatus('disconnected');
+    }
+  };
+
+  const handleSearch = useCallback(async () => {
     if (!query.trim()) return;
 
     setIsLoading(true);
-    
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      user: userRole,
-      query: query,
-      status: 'Processing'
-    };
 
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    const result = processQuery(query, userRole);
-    
-    if (result.type === 'rbac_denial') {
-      logEntry.status = 'RBAC_DENIED';
-      logEntry.reason = 'Insufficient permissions';
-    } else if (result.type === 'no_policy') {
-      logEntry.status = 'NO_MATCH';
-      logEntry.confidence = 0;
-    } else {
-      logEntry.status = 'SUCCESS';
-      logEntry.confidence = result.confidence;
-      logEntry.citationCount = 1;
+    try {
+      const apiResponse = await queryPolicy(query, userRole);
+      setResponse(apiResponse);
+      setAuditLog(prev => [...prev, {
+        timestamp: new Date().toISOString(),
+        query,
+        status: apiResponse.success ? 'SUCCESS' : 'FAILED',
+        confidence: apiResponse.confidence
+      }]);
+    } catch (error) {
+      setResponse({
+        success: false,
+        message: 'Connection error. Please check backend.'
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    setAuditLog(prev => [logEntry, ...prev]);
-    setResponse(result);
-    setIsLoading(false);
   }, [query, userRole]);
 
-  const handleKeyPress = useCallback((e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      searchPolicy();
-    }
-  }, [searchPolicy]);
+  const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  setUploading(true);
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('policy_id', 'POL-' + Date.now());
+  formData.append('name', file.name.replace('.pdf', ''));
+  formData.append('required_role', 'Junior Officer');
+  formData.append('risk_level', 'Low');
+  
+  try {
+    const response = await fetch('http://localhost:8000/api/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    alert(`✅ Uploaded! ${data.chunks_created} chunks created from ${data.policy_id}`);
+  } catch (err) {
+    alert('❌ Upload failed: ' + err.message);
+  } finally {
+    setUploading(false);
+  }
+};
 
-  const sampleQueries = useMemo(() => [
-    {
-      emoji: '🏢',
-      title: 'CRE LTV Query',
-      query: 'What is the LTV ratio for commercial real estate in Zone B?'
-    },
-    {
-      emoji: '🏠',
-      title: 'Mortgage Standards',
-      query: 'What is the minimum credit score for residential mortgages?'
-    },
-    {
-      emoji: '📊',
-      title: 'Basel III Capital',
-      query: 'Basel III capital requirements for corporate exposures'
-    }
-  ], []);
+  const quickActions = [
+    { icon: '🏢', title: 'CRE LTV Query', subtitle: 'Click to use' },
+    { icon: '🏠', title: 'Mortgage Standards', subtitle: 'Click to use' },
+    { icon: '📊', title: 'LTV Criteria', subtitle: 'Click to use' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <div className="absolute inset-0 opacity-5" style={{
-        backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)',
-        backgroundSize: '50px 50px'
-      }}></div>
-      
+    <div style={{ 
+      minHeight: '100vh', 
+      background: 'linear-gradient(135deg, #1e3a8a 0%, #312e81 50%, #1e293b 100%)',
+      fontFamily: 'Outfit, sans-serif',
+      color: '#fff'
+    }}>
       {/* Header */}
-      <header className="relative bg-white/5 backdrop-blur-xl border-b border-white/10 shadow-2xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-blue-500 blur-xl opacity-50"></div>
-                <Shield className="relative w-10 h-10 text-blue-400" strokeWidth={2} />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                  Compliance RAG System
-                </h1>
-                <p className="text-sm text-slate-400 mt-0.5">
-                  Enterprise Knowledge Assistant
-                </p>
-              </div>
+      <header style={{
+        background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.9) 0%, rgba(49, 46, 129, 0.9) 100%)',
+        backdropFilter: 'blur(10px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        padding: '1.5rem 2rem',
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000
+      }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%)',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 10px 25px rgba(252, 211, 77, 0.3)'
+            }}>
+              <Shield size={28} color="#1e3a8a" strokeWidth={2.5} />
             </div>
-            
-            <div className="flex items-center space-x-3">
-              <User className="w-5 h-5 text-slate-400" />
-              <select 
-                value={userRole} 
+            <div>
+              <h1 style={{ 
+                fontSize: '1.75rem', 
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #60A5FA 0%, #A78BFA 50%, #F472B6 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                margin: 0,
+                lineHeight: 1.2
+              }}>
+                Compliance RAG System
+              </h1>
+              <p style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.6)', margin: 0 }}>
+                Enterprise Knowledge Assistant
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <User size={18} color="rgba(255, 255, 255, 0.7)" />
+              <select
+                value={userRole}
                 onChange={(e) => setUserRole(e.target.value)}
-                className="px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-white font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all hover:bg-white/20 cursor-pointer"
-                aria-label="Select user role"
+                style={{
+                  padding: '0.75rem 1.25rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '10px',
+                  color: '#fff',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
               >
-                <option className="bg-slate-800">Junior Officer</option>
-                <option className="bg-slate-800">Senior Loan Officer</option>
-                <option className="bg-slate-800">Credit Manager</option>
-                <option className="bg-slate-800">Risk Officer</option>
-                <option className="bg-slate-800">Senior Management</option>
+                <option value="Junior Officer" style={{ background: '#1e3a8a' }}>Junior Officer</option>
+                <option value="Senior Loan Officer" style={{ background: '#1e3a8a' }}>Senior Loan Officer</option>
+                <option value="Credit Manager" style={{ background: '#1e3a8a' }}>Credit Manager</option>
+                <option value="Risk Officer" style={{ background: '#1e3a8a' }}>Risk Officer</option>
+                <option value="Senior Management" style={{ background: '#1e3a8a' }}>Senior Management</option>
               </select>
             </div>
           </div>
         </div>
       </header>
+
+      {/* Main Content */}
       
-      <main className="relative max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem' }}>
+      
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '2rem' }}>
+
+          
           {/* Left Column */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Search Section */}
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-600 rounded-2xl opacity-20 group-hover:opacity-30 blur transition duration-500"></div>
-              
-              <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/20">
-                <div className="flex items-center space-x-2 mb-3">
-                  <Sparkles className="w-5 h-5 text-cyan-400" />
-                  <label className="text-sm font-bold text-white uppercase tracking-wide">
-                    Policy Query
-                  </label>
-                </div>
-                
-                <div className="relative">
-                  <textarea
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Ask about lending policies, compliance requirements, or regulatory standards..."
-                    className="w-full px-5 py-4 bg-white/5 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-none transition-all backdrop-blur-sm"
-                    rows={4}
-                    aria-label="Policy query input"
-                  />
-                </div>
-                
-                <button
-                  onClick={searchPolicy}
-                  disabled={isLoading || !query.trim()}
-                  className="mt-4 w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:from-slate-600 disabled:to-slate-700 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center space-x-3 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-cyan-500/50 disabled:transform-none disabled:shadow-none"
-                  aria-label="Search policies"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Analyzing Policy Database...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Search className="w-5 h-5" />
-                      <span>Search Policies</span>
-                    </>
-                  )}
-                </button>
+          <div>
+            {/* Search Panel */}
+            <div style={{
+              background: 'rgba(30, 58, 138, 0.4)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '24px',
+              padding: '2rem',
+              marginBottom: '2rem',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
+            }}>
+
+              {/* Upload Section */}
+<div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+  <label style={{
+    display: 'block',
+    padding: '1.25rem',
+    background: 'rgba(255,255,255,0.05)',
+    border: '2px dashed rgba(255,255,255,0.2)',
+    borderRadius: '12px',
+    textAlign: 'center',
+    cursor: uploading ? 'not-allowed' : 'pointer',
+    transition: 'all 0.3s',
+    opacity: uploading ? 0.6 : 1
+  }}
+  onMouseEnter={(e) => !uploading && (e.currentTarget.style.borderColor = 'rgba(252, 211, 77, 0.5)')}
+  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)')}>
+    <input
+      type="file"
+      accept=".pdf"
+      onChange={handleFileUpload}
+      style={{ display: 'none' }}
+      disabled={uploading}
+    />
+    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📄</div>
+    <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#fff' }}>
+      {uploading ? 'Uploading...' : 'Upload Policy PDF'}
+    </div>
+    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.25rem' }}>
+      Click to browse or drag and drop
+    </div>
+  </label>
+</div>
+
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <Sparkles size={24} color="#FCD34D" />
+                <h2 style={{ fontSize: '1.5rem', fontWeight: '700', margin: 0 }}>POLICY QUERY</h2>
               </div>
+
+              <textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSearch())}
+                placeholder="Ask about lending policies, compliance requirements, or regulatory standards..."
+                rows="4"
+                style={{
+                  width: '100%',
+                  padding: '1.25rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '2px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '16px',
+                  color: '#fff',
+                  fontSize: '1rem',
+                  resize: 'none',
+                  outline: 'none',
+                  marginBottom: '1.5rem',
+                  fontFamily: 'Outfit, sans-serif'
+                }}
+              />
+
+              <button
+                onClick={handleSearch}
+                disabled={isLoading || !query.trim()}
+                style={{
+                  width: '100%',
+                  padding: '1.25rem',
+                  background: isLoading ? '#64748b' : 'linear-gradient(135deg, #1e3a8a 0%, #312e81 100%)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: '#fff',
+                  fontSize: '1rem',
+                  fontWeight: '700',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.75rem',
+                  transition: 'all 0.3s',
+                  boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)'
+                }}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin" style={{ width: '20px', height: '20px', border: '3px solid rgba(255,255,255,0.3)', borderTop: '3px solid #fff', borderRadius: '50%' }}></div>
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <Search size={20} />
+                    Search Policies
+                  </>
+                )}
+              </button>
+
+
+
+
+
+              
             </div>
 
-            {/* Response Section */}
+            {/* Results */}
             {response && (
-              <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl opacity-20 blur"></div>
-                
-                <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-white/20">
-                  {response.type === 'success' ? (
-                    <div>
-                      <div className="bg-gradient-to-r from-green-600/30 to-emerald-600/30 border-b border-white/20 px-6 py-5 flex items-center justify-between backdrop-blur-sm">
-                        <div className="flex items-center space-x-3">
-                          <CheckCircle className="w-7 h-7 text-green-400" strokeWidth={2.5} />
-                          <div>
-                            <h3 className="font-bold text-white text-lg">Policy Retrieved</h3>
-                            <p className="text-sm text-green-300">High confidence match</p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-3">
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-white">{response.confidence}%</div>
-                            <div className="text-xs text-slate-300">Confidence</div>
-                          </div>
-                          <div className={`px-4 py-2 rounded-lg text-sm font-bold backdrop-blur-sm ${
-                            response.riskLevel === 'High' ? 'bg-red-500/30 text-red-200 border border-red-400/50' :
-                            response.riskLevel === 'Medium' ? 'bg-yellow-500/30 text-yellow-200 border border-yellow-400/50' :
-                            'bg-blue-500/30 text-blue-200 border border-blue-400/50'
-                          }`}>
-                            {response.riskLevel} Risk
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-6 space-y-6">
-                        <div className="relative">
-                          <div className="absolute -left-2 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-cyan-500 rounded-full"></div>
-                          <h4 className="text-sm font-bold text-cyan-400 mb-3 flex items-center pl-3">
-                            <FileText className="w-4 h-4 mr-2" />
-                            POLICY TEXT
-                          </h4>
-                          <div className="bg-slate-900/50 backdrop-blur-sm border border-cyan-500/30 rounded-xl p-5 ml-3">
-                            <p className="text-white leading-relaxed text-base">{response.answer}</p>
-                          </div>
-                        </div>
-
-                        <div className="relative">
-                          <div className="absolute -left-2 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full"></div>
-                          <h4 className="text-sm font-bold text-purple-400 mb-3 flex items-center pl-3">
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            CITATION METADATA
-                          </h4>
-                          <div className="bg-purple-900/20 backdrop-blur-sm border border-purple-500/30 rounded-xl p-5 ml-3">
-                            <div className="grid grid-cols-2 gap-4 mb-4">
-                              <div className="bg-white/5 rounded-lg p-3">
-                                <span className="text-xs text-slate-400 uppercase tracking-wide">Policy ID</span>
-                                <p className="font-mono text-purple-300 font-bold mt-1">{response.citation.policyId}</p>
-                              </div>
-                              <div className="bg-white/5 rounded-lg p-3">
-                                <span className="text-xs text-slate-400 uppercase tracking-wide">Version</span>
-                                <p className="font-bold text-purple-300 mt-1">{response.citation.version}</p>
-                              </div>
-                              <div className="bg-white/5 rounded-lg p-3">
-                                <span className="text-xs text-slate-400 uppercase tracking-wide">Section</span>
-                                <p className="font-mono text-purple-300 font-bold mt-1">{response.citation.section}</p>
-                              </div>
-                              <div className="bg-white/5 rounded-lg p-3">
-                                <span className="text-xs text-slate-400 uppercase tracking-wide">Page</span>
-                                <p className="font-bold text-purple-300 mt-1">{response.citation.page}</p>
-                              </div>
-                            </div>
-                            <div className="pt-4 border-t border-purple-500/30">
-                              <span className="text-xs text-slate-400 uppercase tracking-wide">Policy Name</span>
-                              <p className="font-bold text-white mt-1">{response.citation.policyName}</p>
-                              <p className="text-xs text-slate-400 mt-2">Effective: {response.citation.effectiveDate}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {response.preconditions.length > 0 && (
-                          <div className="relative">
-                            <div className="absolute -left-2 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-500 to-orange-500 rounded-full"></div>
-                            <h4 className="text-sm font-bold text-amber-400 mb-3 flex items-center pl-3">
-                              <Info className="w-4 h-4 mr-2" />
-                              PRECONDITIONS
-                            </h4>
-                            <div className="bg-amber-900/20 backdrop-blur-sm border border-amber-500/30 rounded-xl p-5 ml-3">
-                              <ul className="space-y-2">
-                                {response.preconditions.map((cond, idx) => (
-                                  <li key={idx} className="flex items-start text-amber-100">
-                                    <span className="w-2 h-2 bg-amber-400 rounded-full mr-3 mt-1.5 flex-shrink-0"></span>
-                                    <span>{cond}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-                        )}
-
-                        {response.exceptions.length > 0 && (
-                          <div className="relative">
-                            <div className="absolute -left-2 top-0 bottom-0 w-1 bg-gradient-to-b from-rose-500 to-pink-500 rounded-full"></div>
-                            <h4 className="text-sm font-bold text-rose-400 mb-3 flex items-center pl-3">
-                              <AlertTriangle className="w-4 h-4 mr-2" />
-                              EXCEPTIONS
-                            </h4>
-                            <div className="bg-rose-900/20 backdrop-blur-sm border border-rose-500/30 rounded-xl p-5 ml-3">
-                              <ul className="space-y-2">
-                                {response.exceptions.map((exc, idx) => (
-                                  <li key={idx} className="flex items-start text-rose-100">
-                                    <span className="w-2 h-2 bg-rose-400 rounded-full mr-3 mt-1.5 flex-shrink-0"></span>
-                                    <span>{exc}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-                        )}
+              <div style={{
+                background: 'rgba(30, 58, 138, 0.4)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '24px',
+                padding: '2rem',
+                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
+              }} className="animate-fadeIn">
+                {response.success ? (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                      <CheckCircle size={32} color="#10B981" />
+                      <div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: '700', margin: 0 }}>Policy Found</h3>
+                        <p style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.6)', margin: 0 }}>
+                          Confidence: <strong style={{ color: '#10B981' }}>{response.confidence}%</strong>
+                        </p>
                       </div>
                     </div>
-                  ) : (
-                    <div>
-                      <div className={`${
-                        response.type === 'rbac_denial' 
-                          ? 'bg-gradient-to-r from-orange-600/30 to-red-600/30' 
-                          : 'bg-gradient-to-r from-red-600/30 to-rose-600/30'
-                      } border-b border-white/20 px-6 py-5 flex items-center space-x-3 backdrop-blur-sm`}>
-                        {response.type === 'rbac_denial' ? (
-                          <Shield className="w-7 h-7 text-orange-400" strokeWidth={2.5} />
-                        ) : (
-                          <XCircle className="w-7 h-7 text-red-400" strokeWidth={2.5} />
-                        )}
-                        <div>
-                          <h3 className="font-bold text-white text-lg">
-                            {response.type === 'rbac_denial' ? 'Access Denied' : 'Policy Not Found'}
-                          </h3>
-                          <p className={`text-sm ${
-                            response.type === 'rbac_denial' ? 'text-orange-300' : 'text-red-300'
-                          }`}>
-                            {response.message}
-                          </p>
-                        </div>
-                      </div>
 
-                      <div className="p-6 space-y-4">
-                        {response.type === 'rbac_denial' && (
-                          <div className="bg-slate-900/50 backdrop-blur-sm border border-orange-500/30 rounded-xl p-5">
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm text-slate-400">Policy Name</span>
-                                <span className="text-white font-semibold">{response.policyName}</span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm text-slate-400">Required Role</span>
-                                <span className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-lg text-sm font-bold border border-orange-500/30">
-                                  {response.requiredRole}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm text-slate-400">Your Role</span>
-                                <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-lg text-sm font-bold border border-blue-500/30">
-                                  {userRole}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        <div className="bg-blue-900/20 backdrop-blur-sm border border-blue-500/30 rounded-xl p-5">
-                          <div className="flex items-start space-x-3">
-                            <Lightbulb className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                            <div>
-                              <p className="text-sm font-bold text-blue-400 mb-2 uppercase tracking-wide">
-                                Recommended Action
-                              </p>
-                              <p className="text-white leading-relaxed">{response.recommendedAction}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div style={{
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '16px',
+                      padding: '1.5rem',
+                      marginBottom: '1.5rem'
+                    }}>
+                      <p style={{ fontSize: '1rem', lineHeight: '1.7', margin: 0 }}>{response.answer}</p>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Right Sidebar */}
-          <div className="space-y-6">
-            {/* Stats Card */}
-            <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl opacity-20 group-hover:opacity-30 blur transition"></div>
-              
-              <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/20">
-                <div className="flex items-center space-x-2 mb-5">
-                  <Activity className="w-5 h-5 text-cyan-400" />
-                  <h3 className="font-bold text-white uppercase tracking-wide text-sm">System Status</h3>
-                  <div className="flex-1"></div>
-                  <div className="flex items-center space-x-1.5">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs text-green-400 font-medium">Live</span>
-                  </div>
-                </div>
-                
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center bg-white/5 rounded-lg p-3 border border-white/10">
-                    <span className="text-sm text-slate-300">Policies Indexed</span>
-                    <span className="font-bold text-lg text-blue-400">847</span>
-                  </div>
-                  <div className="flex justify-between items-center bg-white/5 rounded-lg p-3 border border-white/10">
-                    <span className="text-sm text-slate-300">Citation Coverage</span>
-                    <span className="font-bold text-lg text-green-400">100%</span>
-                  </div>
-                  <div className="flex justify-between items-center bg-white/5 rounded-lg p-3 border border-white/10">
-                    <span className="text-sm text-slate-300">Avg Response</span>
-                    <span className="font-bold text-lg text-cyan-400">2.3s</span>
-                  </div>
-                  <div className="flex justify-between items-center bg-white/5 rounded-lg p-3 border border-white/10">
-                    <span className="text-sm text-slate-300">Refusal Rate</span>
-                    <span className="font-bold text-lg text-purple-400">8%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Sample Queries */}
-            <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl opacity-20 group-hover:opacity-30 blur transition"></div>
-              
-              <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/20">
-                <div className="flex items-center space-x-2 mb-4">
-                  <Zap className="w-5 h-5 text-purple-400" />
-                  <h3 className="font-bold text-white uppercase tracking-wide text-sm">Quick Start</h3>
-                </div>
-                
-                <div className="space-y-2">
-                  {sampleQueries.map((sample, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setQuery(sample.query)}
-                      className="w-full text-left px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/50 rounded-lg transition-all group/btn"
-                      aria-label={`Use sample query: ${sample.title}`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <span className="text-2xl">{sample.emoji}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-white group-hover/btn:text-purple-300 transition-colors">
-                            {sample.title}
-                          </div>
-                          <div className="text-xs text-slate-400 truncate">
-                            Click to use
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Audit Log */}
-            <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-green-600 to-emerald-600 rounded-2xl opacity-20 group-hover:opacity-30 blur transition"></div>
-              
-              <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-white/20">
-                <button
-                  onClick={() => setShowAudit(!showAudit)}
-                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-white/5 transition-colors"
-                  aria-label={showAudit ? "Hide audit log" : "Show audit log"}
-                >
-                  <div className="flex items-center space-x-2">
-                    <Clock className="w-5 h-5 text-green-400" />
-                    <h3 className="font-bold text-white uppercase tracking-wide text-sm">Audit Log</h3>
-                    <span className="px-2.5 py-1 bg-green-500/20 text-green-300 text-xs font-bold rounded-full border border-green-500/30">
-                      {auditLog.length}
-                    </span>
-                  </div>
-                  {showAudit ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                </button>
-                
-                {showAudit && (
-                  <div className="border-t border-white/20 p-4 max-h-96 overflow-y-auto">
-                    {auditLog.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-8">No queries yet</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {auditLog.map((log, idx) => (
-                          <div key={idx} className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
-                            <div className="flex items-start justify-between mb-2">
-                              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-                                log.status === 'SUCCESS' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
-                                log.status === 'RBAC_DENIED' ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' :
-                                'bg-red-500/20 text-red-300 border border-red-500/30'
-                              }`}>
-                                {log.status}
+                    {response.citations && response.citations.length > 0 && (
+                      <div>
+                        <h4 style={{ fontSize: '0.875rem', fontWeight: '700', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <FileText size={16} />
+                          CITATIONS
+                        </h4>
+                        {response.citations.map((citation, idx) => (
+                          <div key={idx} style={{
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            marginBottom: '0.75rem'
+                          }}>
+                            <p style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.9rem' }}>{citation.policy_name}</p>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.75rem' }}>
+                              <span style={{ padding: '0.25rem 0.75rem', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '6px' }}>
+                                {citation.policy_id}
                               </span>
-                              <span className="text-xs text-slate-400">
-                                {new Date(log.timestamp).toLocaleTimeString()}
+                              <span style={{ padding: '0.25rem 0.75rem', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '6px' }}>
+                                v{citation.version}
                               </span>
+                              {citation.page && (
+                                <span style={{ padding: '0.25rem 0.75rem', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '6px' }}>
+                                  Page {citation.page}
+                                </span>
+                              )}
                             </div>
-                            <p className="text-white text-sm mb-1 font-medium">{log.user}</p>
-                            <p className="text-slate-300 text-xs truncate mb-2">{log.query}</p>
-                            {log.confidence !== undefined && (
-                              <div className="flex items-center space-x-2">
-                                <div className="flex-1 bg-white/10 rounded-full h-1.5 overflow-hidden">
-                                  <div 
-                                    className="bg-gradient-to-r from-blue-500 to-cyan-500 h-full transition-all duration-500"
-                                    style={{ width: `${log.confidence}%` }}
-                                  ></div>
-                                </div>
-                                <span className="text-xs text-cyan-400 font-bold">{log.confidence}%</span>
-                              </div>
-                            )}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '2rem' }}>
+                    <Activity size={48} color="#F59E0B" style={{ margin: '0 auto 1rem' }} />
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '0.5rem' }}>No Policy Found</h3>
+                    <p style={{ color: 'rgba(255, 255, 255, 0.7)' }}>{response.message}</p>
+                  </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Right Column */}
+          <div>
+            {/* System Status */}
+            <div style={{
+              background: 'rgba(30, 58, 138, 0.4)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '24px',
+              padding: '1.5rem',
+              marginBottom: '1.5rem',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                  <Activity size={18} />
+                  SYSTEM STATUS
+                </h3>
+                <span style={{
+                  padding: '0.25rem 0.75rem',
+                  background: backendStatus === 'connected' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                  color: backendStatus === 'connected' ? '#10B981' : '#EF4444',
+                  borderRadius: '8px',
+                  fontSize: '0.75rem',
+                  fontWeight: '700'
+                }}>
+                  ● {backendStatus === 'connected' ? 'Live' : 'Offline'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.7)' }}>Policies Indexed</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: '700', color: '#60A5FA' }}>{stats.policiesIndexed}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.7)' }}>Citation Coverage</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10B981' }}>{stats.citationCoverage}%</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.7)' }}>Avg Response</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: '700', color: '#60A5FA' }}>{stats.avgResponse}s</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.7)' }}>Refusal Rate</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: '700', color: '#F472B6' }}>{stats.refusalRate}%</span>
+                </div>
               </div>
             </div>
 
-            {/* System Architecture */}
-            <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-2xl opacity-20 group-hover:opacity-30 blur transition"></div>
-              
-              <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-white/20">
+            {/* Quick Start */}
+            <div style={{
+              background: 'rgba(30, 58, 138, 0.4)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '24px',
+              padding: '1.5rem',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
+            }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Zap size={18} color="#FCD34D" />
+                QUICK START
+              </h3>
+
+              {quickActions.map((action, idx) => (
                 <button
-                  onClick={() => setShowArchitecture(!showArchitecture)}
-                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-white/5 transition-colors"
-                  aria-label={showArchitecture ? "Hide architecture details" : "Show architecture details"}
+                  key={idx}
+                  onClick={() => setQuery(action.title)}
+                  style={{
+                    width: '100%',
+                    padding: '1rem',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '12px',
+                    marginBottom: '0.75rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(252, 211, 77, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                  }}
                 >
-                  <div className="flex items-center space-x-2">
-                    <Lock className="w-5 h-5 text-cyan-400" />
-                    <h3 className="font-bold text-white uppercase tracking-wide text-sm">Architecture</h3>
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    background: 'linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%)',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.25rem'
+                  }}>
+                    {action.icon}
                   </div>
-                  {showArchitecture ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                  <div>
+                    <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#fff', margin: 0 }}>{action.title}</p>
+                    <p style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.5)', margin: 0 }}>{action.subtitle}</p>
+                  </div>
                 </button>
-                
-                {showArchitecture && (
-                  <div className="border-t border-white/20 p-5">
-                    <div className="space-y-3">
-                      <div className="flex items-start space-x-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border bg-blue-500/20 text-blue-300 border-blue-500/30">
-                          <span className="font-bold text-sm">1</span>
-                        </div>
-                        <div className="flex-1 pt-0.5">
-                          <p className="font-bold text-white text-sm">RBAC Filter</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Role-based access control</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start space-x-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border bg-green-500/20 text-green-300 border-green-500/30">
-                          <span className="font-bold text-sm">2</span>
-                        </div>
-                        <div className="flex-1 pt-0.5">
-                          <p className="font-bold text-white text-sm">Semantic Search</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Policy retrieval with chunking</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start space-x-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border bg-purple-500/20 text-purple-300 border-purple-500/30">
-                          <span className="font-bold text-sm">3</span>
-                        </div>
-                        <div className="flex-1 pt-0.5">
-                          <p className="font-bold text-white text-sm">Citation Validator</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Mandatory citation extraction</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start space-x-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border bg-orange-500/20 text-orange-300 border-orange-500/30">
-                          <span className="font-bold text-sm">4</span>
-                        </div>
-                        <div className="flex-1 pt-0.5">
-                          <p className="font-bold text-white text-sm">Confidence Check</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Threshold-based refusal (≥70%)</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start space-x-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border bg-red-500/20 text-red-300 border-red-500/30">
-                          <span className="font-bold text-sm">5</span>
-                        </div>
-                        <div className="flex-1 pt-0.5">
-                          <p className="font-bold text-white text-sm">Audit Logger</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Immutable query logs</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
           </div>
         </div>

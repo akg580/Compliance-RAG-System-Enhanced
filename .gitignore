@@ -32,3 +32,10 @@ yarn-error.log*
 # Optional
 package-lock.json
 yarn.lock
+
+rag-backend/venv/
+RAG-based-loan-policy-check\rag-backend\venv
+.env
+__pycache__/
+*.pyc
+node_modules/

@@ -1,115 +1,146 @@
 ﻿"""
-Lightweight vector store without onnxruntime dependency
+Simple in-memory vector store - NO external dependencies
+Uses basic TF-IDF for search (no ML, no onnxruntime, no PyTorch)
 """
-import chromadb
-from chromadb.config import Settings as ChromaSettings
-from chromadb.utils import embedding_functions
 from typing import List, Dict, Any
 from models import UserRole
-from config import settings
+from collections import defaultdict
+import re
+import math
 
 
 class VectorStore:
-    """Manages vector embeddings using ChromaDB's default embeddings"""
+    """Simple TF-IDF based document store"""
     
     def __init__(self):
-        # Initialize ChromaDB client
-        self.client = chromadb.PersistentClient(
-            path=settings.chroma_persist_directory,
-            settings=ChromaSettings(anonymized_telemetry=False)
-        )
-        
-        # Use simple default embedding (no onnxruntime needed)
-        default_ef = embedding_functions.DefaultEmbeddingFunction()
-        
-        # Get or create collection
-        self.collection = self.client.get_or_create_collection(
-            name="policy_documents",
-            embedding_function=default_ef,
-            metadata={"description": "Financial policy documents"}
-        )
-        
-        print(f"Vector store initialized. Collection size: {self.collection.count()}")
+        self.documents = []  # Store all chunks
+        self.doc_count = 0
+        self.word_doc_freq = defaultdict(int)  # IDF calculation
+        print(f"Vector store initialized. Collection size: 0")
+    
+    def _tokenize(self, text: str) -> List[str]:
+        """Simple tokenization"""
+        text = text.lower()
+        words = re.findall(r'\w+', text)
+        return [w for w in words if len(w) > 2]  # Filter short words
+    
+    def _calculate_tf(self, words: List[str]) -> Dict[str, float]:
+        """Term frequency"""
+        tf = defaultdict(int)
+        for word in words:
+            tf[word] += 1
+        # Normalize
+        total = len(words)
+        return {word: count/total for word, count in tf.items()}
+    
+    def _calculate_idf(self, word: str) -> float:
+        """Inverse document frequency"""
+        if self.doc_count == 0:
+            return 0
+        doc_freq = self.word_doc_freq.get(word, 0)
+        if doc_freq == 0:
+            return 0
+        return math.log(self.doc_count / doc_freq)
     
     def add_chunks(self, chunks: List[Dict]) -> int:
-        """Add policy chunks to vector store"""
+        """Add chunks to store"""
         if not chunks:
             return 0
         
-        ids = [chunk["id"] for chunk in chunks]
-        texts = [chunk["text"] for chunk in chunks]
-        metadatas = [chunk["metadata"] for chunk in chunks]
+        for chunk in chunks:
+            doc_id = chunk["id"]
+            text = chunk["text"]
+            metadata = chunk["metadata"]
+            
+            # Tokenize and calculate TF
+            words = self._tokenize(text)
+            tf = self._calculate_tf(words)
+            
+            # Update word document frequency
+            unique_words = set(words)
+            for word in unique_words:
+                self.word_doc_freq[word] += 1
+            
+            # Store document
+            self.documents.append({
+                "id": doc_id,
+                "text": text,
+                "metadata": metadata,
+                "words": words,
+                "tf": tf
+            })
         
-        # Add to collection (embeddings generated automatically)
-        self.collection.add(
-            ids=ids,
-            documents=texts,
-            metadatas=metadatas
-        )
-        
-        print(f"Added {len(chunks)} chunks to vector store")
+        self.doc_count = len(self.documents)
+        print(f"✅ Added {len(chunks)} chunks to vector store (Total: {self.doc_count})")
         return len(chunks)
-    
-    def search(self, query: str, user_role: UserRole, top_k: int = None) -> List[Dict]:
-        """Semantic search for relevant policy chunks"""
-        if top_k is None:
-            top_k = settings.top_k_results
+
+    def search(self, query: str, user_role: UserRole, top_k: int = 5) -> List[Dict]:
+        """Search using improved keyword matching + TF-IDF"""
+        if not self.documents:
+            print("❌ No documents in store")
+            return []
         
-        # Define role hierarchy for RBAC
-        role_hierarchy = {
-            UserRole.JUNIOR_OFFICER: [UserRole.JUNIOR_OFFICER],
-            UserRole.SENIOR_LOAN_OFFICER: [UserRole.JUNIOR_OFFICER, UserRole.SENIOR_LOAN_OFFICER],
-            UserRole.CREDIT_MANAGER: [UserRole.JUNIOR_OFFICER, UserRole.SENIOR_LOAN_OFFICER, UserRole.CREDIT_MANAGER],
-            UserRole.RISK_OFFICER: [UserRole.JUNIOR_OFFICER, UserRole.SENIOR_LOAN_OFFICER, UserRole.CREDIT_MANAGER, UserRole.RISK_OFFICER],
-            UserRole.SENIOR_MANAGEMENT: list(UserRole)
-        }
+        print(f"\n🔍 Searching for: '{query}'")
         
-        allowed_roles = [role.value for role in role_hierarchy.get(user_role, [user_role])]
+        # Tokenize query
+        query_words = self._tokenize(query)
+        query_words_set = set(query_words)
         
-        # Search with RBAC filter
-        try:
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=top_k * 2,
-                where={"required_role": {"$in": allowed_roles}}
-            )
-        except Exception as e:
-            print(f"Search with filter failed: {e}, trying without filter")
-            # Fallback: search without filter
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=top_k
-            )
+        print(f"   Query tokens: {query_words[:5]}...")
         
-        # Format results
-        formatted_results = []
-        
-        if results['ids'] and results['ids'][0]:
-            for i in range(min(top_k, len(results['ids'][0]))):
-                formatted_results.append({
-                    "chunk_id": results['ids'][0][i],
-                    "text": results['documents'][0][i],
-                    "metadata": results['metadatas'][0][i],
-                    "distance": results['distances'][0][i] if 'distances' in results else 0,
-                    "relevance_score": 1 - (results['distances'][0][i] if 'distances' in results else 0)
+        # Calculate scores for each document
+        scores = []
+        for doc in self.documents:
+            # Method 1: Simple keyword overlap (works better for short queries)
+            doc_words_set = set(doc["words"])
+            overlap = len(query_words_set & doc_words_set)
+            keyword_score = overlap / max(len(query_words_set), 1)
+            
+            # Method 2: TF-IDF score
+            tfidf_score = 0
+            for word in query_words:
+                if word in doc["tf"]:
+                    tf = doc["tf"][word]
+                    idf = self._calculate_idf(word)
+                    tfidf_score += tf * idf
+            
+            # Combine both scores (keyword matching is more reliable for simple queries)
+            final_score = (keyword_score * 0.7) + (tfidf_score * 0.3)
+            
+            if final_score > 0:
+                scores.append({
+                    "chunk_id": doc["id"],
+                    "text": doc["text"],
+                    "metadata": doc["metadata"],
+                    "distance": 1 - final_score,
+                    "relevance_score": final_score
                 })
         
-        return formatted_results
+        # Sort by score (descending)
+        scores.sort(key=lambda x: x["relevance_score"], reverse=True)
+        
+        # Return top k
+        results = scores[:top_k]
+        
+        if results:
+            print(f"✅ Found {len(results)} results")
+            print(f"   Top result score: {results[0]['relevance_score']:.3f}")
+            print(f"   Preview: {results[0]['text'][:100]}...")
+        else:
+            print(f"❌ No results found")
+        
+        return results
     
     def get_collection_stats(self) -> Dict[str, Any]:
-        """Get statistics about the vector store"""
-        count = self.collection.count()
-        
-        # Get unique policies
-        all_data = self.collection.get()
+        """Get stats"""
         unique_policies = set()
-        if all_data['metadatas']:
-            for metadata in all_data['metadatas']:
-                if 'policy_id' in metadata:
-                    unique_policies.add(metadata['policy_id'])
+        for doc in self.documents:
+            policy_id = doc["metadata"].get("policy_id")
+            if policy_id:
+                unique_policies.add(policy_id)
         
         return {
-            "total_chunks": count,
+            "total_chunks": self.doc_count,
             "unique_policies": len(unique_policies),
-            "collection_name": self.collection.name
+            "collection_name": "simple_store"
         }

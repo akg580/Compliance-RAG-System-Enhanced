@@ -1,61 +1,66 @@
-﻿from __future__ import annotations  # 1. Allows postponed evaluation of annotations
-from typing import Dict, List, TYPE_CHECKING
-from openai import OpenAI
+﻿from typing import Dict, List
+from groq import Groq  # Change from openai to groq
 from models import QueryRequest, QueryResponse, Citation, RiskLevel
 from config import settings
 
-# 2. This block is ONLY seen by type checkers (VS Code/PyCharm), NOT by Python at runtime
-if TYPE_CHECKING:
-    from services.vector_store import VectorStore
 
 class RAGService:
-    def __init__(self, vector_store: VectorStore):
+    def __init__(self, vector_store):
         self.vector_store = vector_store
-        self.llm_client = OpenAI(api_key=settings.openai_api_key)
         
-    # ... rest of your code
-
+        # Use Groq instead of OpenAI
+        if settings.groq_api_key:
+            self.llm_client = Groq(api_key=settings.groq_api_key)
+            self.use_llm = True
+            print("🚀 Using Groq LLM (FREE)")
+        else:
+            self.llm_client = None
+            self.use_llm = False
+            print("⚠️ No Groq API key - using fallback mode")
         
     def process_query(self, query_request: QueryRequest) -> QueryResponse:
-        # 1. Search for relevant chunks
+        # Search for relevant chunks
         chunks = self.vector_store.search(query_request.query, query_request.user_role, 5)
-    
+        
         if not chunks:
             return QueryResponse(
                 success=False,
                 query=query_request.query,
                 confidence=0.0,
-                message="No policy documents found. Please upload policy PDFs first."
+                message="No relevant policy information found."
             )
-    
-        # 2. Join all chunks to provide full context
-        context = "\n---\n".join([c["text"] for c in chunks])
-    
-        try:
-            # 3. Request completion from OpenAI
-            response = self.llm_client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a loan policy assistant. Answer strictly based on the provided policy document context. If the answer isn't there, say you don't know."},
-                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query_request.query}"}
-                ],
-                temperature=0.1
-            )
-            answer = response.choices[0].message.content
-        except Exception as e:
-            print(f"LLM error: {e}")
-            answer = "An error occurred while generating the answer."
+        
+        context = "\n\n---\n\n".join([c["text"] for c in chunks[:3]])
 
-        # 4. Map citations from the metadata of retrieved chunks
+        # Inside process_query method, replace the try/except block:
+        if self.use_llm:
+            try:
+                # Call Groq (much faster than OpenAI!)
+                response = self.llm_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",  # Fast & accurate
+                    messages=[
+                        {"role": "system", "content": "You are a helpful loan policy assistant. Answer based strictly on the provided context."},
+                        {"role": "user", "content": f"Context:\n\n{context}\n\nQuestion: {query_request.query}\n\nAnswer:"}
+                    ],
+                    temperature=0.1,
+                    max_tokens=500
+                )
+                answer = response.choices[0].message.content
+                print(f"✅ Generated answer with Groq")
+            except Exception as e:
+                print(f"❌ Groq error: {e}")
+                answer = self._extract_answer_from_context(chunks, query_request.query)
+
+        # Create citation
         citations = [
             Citation(
-                policy_id=c["metadata"].get("policy_id", "UNKNOWN"),
-                policy_name=c["metadata"].get("policy_name", "Unknown Policy"),
-                version=c["metadata"].get("version", "1.0"),
-                effective_date=c["metadata"].get("effective_date", "N/A")
-            ) for c in chunks[:1] # Using the top chunk for the primary citation
+                policy_id=chunks[0]["metadata"].get("policy_id", "UNKNOWN"),
+                policy_name=chunks[0]["metadata"].get("policy_name", "Policy Document"),
+                version=chunks[0]["metadata"].get("version", "1.0"),
+                effective_date=chunks[0]["metadata"].get("effective_date", "2024")
+            )
         ]
-    
+
         return QueryResponse(
             success=True,
             query=query_request.query,
@@ -63,6 +68,6 @@ class RAGService:
             citations=citations,
             preconditions=[],
             exceptions=[],
-            confidence=85.0,
+            confidence=min(chunks[0].get("relevance_score", 0) * 100, 95.0),
             risk_level=RiskLevel.MEDIUM
         )

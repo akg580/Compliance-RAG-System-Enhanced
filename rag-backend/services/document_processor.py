@@ -1,13 +1,13 @@
-﻿import re
+import re
 import uuid
 from typing import List, Dict, Any
 import pypdf
-from config import settings
+from app_config import settings
 
 class DocumentProcessor:
     def __init__(self):
         self.chunk_size = settings.chunk_size
-    
+
     def extract_text_from_pdf(self, pdf_path: str) -> Dict[int, str]:
         page_texts = {}
         try:
@@ -21,7 +21,7 @@ class DocumentProcessor:
             print(f"PDF error: {e}")
             raise
         return page_texts
-    
+
     def chunk_document(self, pdf_path: str, policy_metadata: Dict) -> List[Dict]:
         page_texts = self.extract_text_from_pdf(pdf_path)
         chunks = []
@@ -34,6 +34,6 @@ class DocumentProcessor:
             }
             chunks.append(chunk)
         return chunks
-    
+
     def extract_conditions_and_exceptions(self, text: str) -> Dict[str, List[str]]:
         return {"preconditions": [], "exceptions": []}

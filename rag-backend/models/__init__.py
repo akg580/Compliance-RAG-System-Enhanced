@@ -1,4 +1,4 @@
-﻿from .models import (
+from .models import (
     UserRole,
     RiskLevel,
     QueryRequest,
@@ -9,11 +9,6 @@
 )
 
 __all__ = [
-    'UserRole',
-    'RiskLevel',
-    'QueryRequest',
-    'Citation',
-    'QueryResponse',
-    'DocumentUploadResponse',
-    'HealthCheck'
+    'UserRole', 'RiskLevel', 'QueryRequest', 'Citation',
+    'QueryResponse', 'DocumentUploadResponse', 'HealthCheck'
 ]

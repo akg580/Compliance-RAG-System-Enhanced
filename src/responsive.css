@@ -1,0 +1,53 @@
+/*
+  Append these rules to the BOTTOM of src/index.css
+  (or keep them in a separate src/responsive.css and import in index.jsx)
+
+  They handle:
+  - Single-column layout on tablet/mobile
+  - Mobile header nav
+  - Audit log table horizontal scroll on small screens
+  - Stat grid collapse
+*/
+
+/* ── Main two-column grid → single column ─────── */
+@media (max-width: 960px) {
+  .main-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Audit stat grid → 2 columns on mobile ─────── */
+@media (max-width: 600px) {
+  .audit-stats {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .audit-table-row {
+    grid-template-columns: 8rem 1fr 2rem !important;
+  }
+  /* Hide less-important audit columns */
+  .audit-col-user,
+  .audit-col-confidence { display: none !important; }
+
+  main {
+    padding: 1rem !important;
+  }
+}
+
+/* ── Mobile bottom nav (shown < 640px) ────────── */
+@media (max-width: 640px) {
+  .mobile-nav {
+    display: flex !important;
+    justify-content: space-around;
+    background: rgba(13,17,23,0.98);
+    border-top: 1px solid var(--border-subtle);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    padding: 0.5rem 0.75rem;
+    gap: 0.25rem;
+  }
+  /* Push main content up so fixed nav doesn't overlap */
+  body { padding-bottom: 56px; }
+}

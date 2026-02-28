@@ -36,6 +36,21 @@ yarn.lock
 rag-backend/venv/
 RAG-based-loan-policy-check\rag-backend\venv
 .env
+.env.example
 __pycache__/
 *.pyc
 node_modules/
+.venv/
+env/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Node dependencies
+node_modules/
+
+# Sensitive environment variables
+.env

@@ -5,10 +5,11 @@ from .models import (
     Citation,
     QueryResponse,
     DocumentUploadResponse,
-    HealthCheck
+    HealthCheck,
+    PolicyInfo,
 )
 
 __all__ = [
     'UserRole', 'RiskLevel', 'QueryRequest', 'Citation',
-    'QueryResponse', 'DocumentUploadResponse', 'HealthCheck'
+    'QueryResponse', 'DocumentUploadResponse', 'HealthCheck', 'PolicyInfo',
 ]

@@ -4,7 +4,8 @@ import {
   Clock, TrendingUp, BookOpen, Lock, BarChart3, ArrowUpRight,
   Cpu, Database, Sun, Moon, Monitor, Trash2, RefreshCw,
   Package, HardDrive, Info, MessageSquare, Globe, Sparkles,
-  Activity, Zap, Send, ChevronDown, ChevronUp
+  Activity, Zap, Send, ChevronDown, ChevronUp,
+  Copy, Check, Mail, Share2, MessageCircle
 } from 'lucide-react';
 import { queryPolicy, healthCheck, uploadPolicy, listPolicies, deletePolicy } from './services/api';
 
@@ -180,7 +181,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;line-height:1.6;b
 .qp-shell{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
 
 /* Answer canvas — scrollable, big, focused */
-.answer-canvas{flex:1;overflow-y:auto;padding:1.75rem 2rem 1rem;display:flex;flex-direction:column;gap:1.25rem}
+.answer-canvas{flex:1;overflow-y:auto;padding:1.75rem 2rem 2.5rem;display:flex;flex-direction:column;gap:1.25rem;scroll-behavior:smooth}
 
 /* Empty state centered in canvas */
 .answer-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;padding:3rem 2rem;min-height:0}
@@ -198,12 +199,12 @@ body{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;line-height:1.6;b
 .qchip:hover{background:var(--indigo-dim);border-color:var(--indigo);color:var(--indigo);transform:translateY(-1px)}
 
 /* ── Answer card — the STAR of the show ── */
-.answer-card{border-radius:18px;overflow:hidden;box-shadow:var(--shadow2);animation:ansIn .42s cubic-bezier(.22,1,.36,1) both;
+.answer-card{border-radius:18px;overflow:visible;box-shadow:var(--shadow2);animation:ansIn .42s cubic-bezier(.22,1,.36,1) both;
   border:1px solid var(--answer-border);background:var(--answer-bg);transition:background .4s,border-color .3s}
 @keyframes ansIn{from{opacity:0;transform:translateY(20px) scale(.985)}to{opacity:1;transform:none}}
 
-/* Color band at top of answer card — type indicator (Gestalt: figure-ground) */
-.ans-band{height:4px;width:100%}
+/* Inner wrapper to maintain rounded corners on card children */
+.ans-inner{border-radius:18px;overflow:hidden}
 .ans-band.policy {background:linear-gradient(90deg,var(--teal),var(--teal2),transparent)}
 .ans-band.general{background:linear-gradient(90deg,var(--indigo),var(--indigo2),transparent)}
 .ans-band.greeting{background:linear-gradient(90deg,var(--gold),var(--gold2),transparent)}
@@ -238,6 +239,14 @@ body{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;line-height:1.6;b
 
 /* Answer body — generous padding, large readable text */
 .ans-body{padding:1.75rem 1.875rem;position:relative}
+.ans-body-inner{overflow:hidden;transition:max-height .35s cubic-bezier(.4,0,.2,1)}
+.ans-body-inner.collapsed{max-height:220px;-webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);mask-image:linear-gradient(to bottom,#000 55%,transparent 100%)}
+.ans-body-inner.expanded{max-height:none;-webkit-mask-image:none;mask-image:none}
+.ans-expand-btn{display:flex;align-items:center;justify-content:center;gap:.4rem;width:100%;
+  margin-top:.75rem;padding:.4375rem .875rem;border-radius:8px;border:1px solid var(--border2);
+  background:var(--bg2);font-family:'Plus Jakarta Sans',sans-serif;font-size:.75rem;
+  font-weight:500;color:var(--t3);cursor:pointer;transition:all .18s}
+.ans-expand-btn:hover{border-color:var(--indigo);color:var(--indigo);background:var(--indigo-dim);transform:translateY(-1px)}
 .ans-text{font-size:1rem;line-height:1.9;color:var(--t2);transition:color .3s;font-family:'Plus Jakarta Sans',sans-serif}
 .ans-text strong{color:var(--t1);font-weight:600}
 .ans-text ul,.ans-text ol{padding-left:1.375rem;margin:.5rem 0}
@@ -247,6 +256,21 @@ body{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;line-height:1.6;b
 .ai-note{margin-top:1.25rem;padding:.6875rem 1rem;border-radius:10px;
   background:var(--indigo-dim);border:1px solid color-mix(in srgb,var(--indigo) 18%,transparent);
   font-size:.74rem;color:var(--t3);display:flex;align-items:flex-start;gap:.4375rem;line-height:1.55}
+
+/* ── Share / action toolbar ── */
+.ans-actions{display:flex;align-items:center;gap:.4rem;padding:.6875rem 1.875rem .875rem;
+  border-top:1px solid var(--border);flex-wrap:wrap;transition:border-color .3s}
+.act-btn{display:flex;align-items:center;gap:.375rem;padding:.3125rem .75rem;border-radius:8px;
+  border:1px solid var(--border2);background:var(--bg2);
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:.72rem;font-weight:500;
+  color:var(--t3);cursor:pointer;transition:all .18s;white-space:nowrap;user-select:none}
+.act-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.act-btn.copy:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-dim)}
+.act-btn.copy.copied{border-color:var(--teal);color:var(--teal);background:var(--teal-dim)}
+.act-btn.whatsapp:hover{border-color:#25D366;color:#25D366;background:rgba(37,211,102,.09)}
+.act-btn.email:hover{border-color:var(--indigo);color:var(--indigo);background:var(--indigo-dim)}
+.act-btn.share:hover{border-color:var(--gold);color:var(--gold);background:var(--gold-dim)}
+.act-sep{width:1px;height:16px;background:var(--border2);margin:0 .125rem;flex-shrink:0}
 
 /* Citations section — grouped by Gestalt proximity */
 .cits-section{border-top:1px solid var(--border);padding:1.125rem 1.875rem;transition:border-color .3s}
@@ -469,12 +493,107 @@ const TYPE_META={
   fail:    {label:'No Answer',      Icon:AlertTriangle, icolor:'var(--rose)',  title:'Could not find an answer'},
 };
 
+/* ── Share helpers ── */
+function _buildShareText(res){
+  const type=_qtype(res);
+  const lines=[];
+  lines.push('*ComplianceAI — Policy Answer*');
+  lines.push('');
+  if(res.query) lines.push(`*Q:* ${res.query}`);
+  lines.push('');
+  if(res.answer) lines.push(res.answer.replace(/\*\*/g,'*'));
+  if(type==='policy'&&res.citations?.length>0){
+    lines.push('');
+    lines.push('*Sources:*');
+    res.citations.forEach(c=>{
+      let src=`• ${c.policy_name} (${c.policy_id} v${c.version})`;
+      if(c.page) src+=` — pg.${c.page}`;
+      lines.push(src);
+    });
+  }
+  lines.push('');
+  lines.push('_Powered by ComplianceAI_');
+  return lines.join('\n');
+}
+
+function _buildEmailText(res){
+  const lines=[];
+  lines.push('ComplianceAI — Policy Answer');
+  lines.push('');
+  if(res.query) lines.push(`Question: ${res.query}`);
+  lines.push('');
+  if(res.answer) lines.push(res.answer.replace(/\*\*(.*?)\*\*/g,'$1'));
+  const type=_qtype(res);
+  if(type==='policy'&&res.citations?.length>0){
+    lines.push('');
+    lines.push('Source Documents:');
+    res.citations.forEach(c=>{
+      let src=`  - ${c.policy_name} (${c.policy_id}, v${c.version})`;
+      if(c.page) src+=`, page ${c.page}`;
+      lines.push(src);
+    });
+  }
+  lines.push('');
+  lines.push('Powered by ComplianceAI');
+  return lines.join('\n');
+}
+
+const ANSWER_COLLAPSE_CHARS = 480; // show expand button if answer longer than this
+
 function AnswerCard({res}){
   if(!res)return null;
   const type=_qtype(res);
   const {label,Icon,icolor,title}=TYPE_META[type];
+  const [copied,setCopied]=useState(false);
+  const answerLen = (res.answer||'').length;
+  const isLong = answerLen > ANSWER_COLLAPSE_CHARS;
+  const [expanded,setExpanded]=useState(false);
+
+  const handleCopy=useCallback(()=>{
+    const txt=_buildShareText(res);
+    navigator.clipboard.writeText(txt).then(()=>{
+      setCopied(true);
+      setTimeout(()=>setCopied(false),2200);
+    }).catch(()=>{
+      // Fallback for browsers without clipboard API
+      const ta=document.createElement('textarea');
+      ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(()=>setCopied(false),2200);
+    });
+  },[res]);
+
+  const handleWhatsApp=useCallback(()=>{
+    const txt=_buildShareText(res);
+    const url=`https://api.whatsapp.com/send?text=${encodeURIComponent(txt)}`;
+    window.open(url,'_blank','noopener,noreferrer');
+  },[res]);
+
+  const handleEmail=useCallback(()=>{
+    const subject=encodeURIComponent(`ComplianceAI: ${res.query||'Policy Answer'}`);
+    const body=encodeURIComponent(_buildEmailText(res));
+    window.location.href=`mailto:?subject=${subject}&body=${body}`;
+  },[res]);
+
+  const handleNativeShare=useCallback(async()=>{
+    if(!navigator.share) return;
+    try{
+      await navigator.share({
+        title:'ComplianceAI Policy Answer',
+        text:_buildShareText(res),
+      });
+    }catch(e){ /* user cancelled */ }
+  },[res]);
+
+  const hasAnswer=res.success&&res.answer;
+  const canNativeShare=!!navigator.share;
+
   return(
     <div className="answer-card">
+    <div className="ans-inner">
       {/* Color band — quick visual indicator, Gestalt figure-ground */}
       <div className={`ans-band ${type}`}/>
 
@@ -502,17 +621,27 @@ function AnswerCard({res}){
         </div>
       </div>
 
-      {/* Answer body — generous space, focus here */}
+      {/* Answer body — collapsible for long answers */}
       <div className="ans-body">
-        {res.success
-          ? <AnswerText text={res.answer}/>
-          : <p style={{fontSize:'.9rem',color:'var(--t3)',lineHeight:1.75}}>{res.message}</p>
-        }
-        {type==='general'&&res.success&&(
-          <div className="ai-note">
-            <Info size={11} style={{flexShrink:0,marginTop:2}}/>
-            <span>This answer draws from AI general knowledge, not your uploaded policy documents. For regulatory figures like repo rate, verify at <strong style={{color:'var(--indigo)'}}>rbi.org.in</strong>.</span>
-          </div>
+        <div className={`ans-body-inner ${isLong&&!expanded?'collapsed':'expanded'}`}>
+          {res.success
+            ? <AnswerText text={res.answer}/>
+            : <p style={{fontSize:'.9rem',color:'var(--t3)',lineHeight:1.75}}>{res.message}</p>
+          }
+          {type==='general'&&res.success&&(
+            <div className="ai-note">
+              <Info size={11} style={{flexShrink:0,marginTop:2}}/>
+              <span>This answer draws from AI general knowledge, not your uploaded policy documents. For regulatory figures like repo rate, verify at <strong style={{color:'var(--indigo)'}}>rbi.org.in</strong>.</span>
+            </div>
+          )}
+        </div>
+        {isLong&&(
+          <button className="ans-expand-btn" onClick={()=>setExpanded(e=>!e)}>
+            {expanded
+              ? <><ChevronUp size={13}/> Show less</>
+              : <><ChevronDown size={13}/> View full answer <span style={{color:'var(--t4)',fontWeight:400,marginLeft:4}}>({answerLen} chars)</span></>
+            }
+          </button>
         )}
       </div>
 
@@ -537,6 +666,58 @@ function AnswerCard({res}){
           </div>
         </div>
       )}
+
+      {/* Share / action toolbar — only shown when there's an answer */}
+      {hasAnswer&&(
+        <div className="ans-actions">
+          {/* Copy to clipboard */}
+          <button
+            className={`act-btn copy${copied?' copied':''}`}
+            onClick={handleCopy}
+            title="Copy answer text"
+          >
+            {copied
+              ? <><Check size={12}/> Copied!</>
+              : <><Copy size={12}/> Copy</>
+            }
+          </button>
+
+          <div className="act-sep"/>
+
+          {/* WhatsApp */}
+          <button
+            className="act-btn whatsapp"
+            onClick={handleWhatsApp}
+            title="Share on WhatsApp"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
+            </svg>
+            WhatsApp
+          </button>
+
+          {/* Email */}
+          <button
+            className="act-btn email"
+            onClick={handleEmail}
+            title="Send via email"
+          >
+            <Mail size={12}/> Email
+          </button>
+
+          {/* Native Share (mobile/modern browsers only) */}
+          {canNativeShare&&(
+            <button
+              className="act-btn share"
+              onClick={handleNativeShare}
+              title="Share via system sheet"
+            >
+              <Share2 size={12}/> Share
+            </button>
+          )}
+        </div>
+      )}
+    </div>{/* end ans-inner */}
     </div>
   );
 }

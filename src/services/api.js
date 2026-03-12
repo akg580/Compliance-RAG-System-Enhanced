@@ -6,6 +6,7 @@
  */
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
 
 function _extractError(data, httpStatus) {
   if (!data) return `HTTP ${httpStatus}`;
@@ -19,6 +20,10 @@ function _extractError(data, httpStatus) {
 }
 
 async function _request(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (API_KEY) headers.set('X-API-Key', API_KEY);
+  options.headers = headers;
+
   let res;
   try {
     res = await fetch(url, options);

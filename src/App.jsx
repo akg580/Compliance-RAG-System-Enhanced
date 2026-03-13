@@ -5,9 +5,10 @@ import {
   Cpu, Database, Sun, Moon, Monitor, Trash2, RefreshCw,
   Package, HardDrive, Info, MessageSquare, Globe, Sparkles,
   Activity, Zap, Send, ChevronDown, ChevronUp,
-  Copy, Check, Mail, Share2, MessageCircle
+  Copy, Check, Mail, Share2, MessageCircle,
+  User, LogIn, LogOut, Eye, EyeOff, UserPlus
 } from 'lucide-react';
-import { queryPolicy, healthCheck, uploadPolicy, listPolicies, deletePolicy } from './services/api';
+import { queryPolicy, healthCheck, uploadPolicy, listPolicies, deletePolicy, signup, login, logoutApi, auth } from './services/api';
 
 /* ══════════════════════════════════════════════
    THEME TOKENS
@@ -276,11 +277,27 @@ body{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;line-height:1.6;b
 .cits-section{border-top:1px solid var(--border);padding:1.125rem 1.875rem;transition:border-color .3s}
 .cits-label{font-size:.6rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
   color:var(--t3);margin-bottom:.75rem;display:flex;align-items:center;gap:.375rem;transition:color .3s}
-.cit-grid{display:flex;flex-direction:column;gap:.375rem}
-.cit{display:flex;align-items:center;justify-content:space-between;padding:.625rem .875rem;border-radius:9px;
-  background:var(--bg2);border:1px solid var(--border);transition:all .18s}
-.cit:hover{border-color:var(--teal);background:var(--teal-dim)}
+.cit-grid{display:flex;flex-direction:column;gap:.5rem}
+.cit{border-radius:9px;background:var(--bg2);border:1px solid var(--border);transition:all .18s;overflow:hidden}
+.cit-hdr{display:flex;align-items:center;justify-content:space-between;padding:.625rem .875rem;cursor:pointer;user-select:none}
+.cit-hdr:hover{background:var(--teal-dim)}
 .cit-name{font-size:.8rem;font-weight:600;color:var(--t2);margin-bottom:.2rem;transition:color .3s}
+/* #15 Evidence panel */
+.cit-excerpt{padding:.5rem .875rem .75rem;font-size:.75rem;line-height:1.65;color:var(--t3);
+  border-top:1px solid var(--border);background:var(--bg1);font-family:'Plus Jakarta Sans',sans-serif;
+  transition:border-color .3s,background .4s}
+.cit-excerpt-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--t4);margin-bottom:.3rem;display:flex;align-items:center;gap:.3rem}
+.cit-toggle{font-size:.65rem;color:var(--teal);font-weight:600;display:flex;align-items:center;gap:.2rem;
+  flex-shrink:0;margin-left:.5rem;opacity:.8}
+/* #18 Degradation banner */
+.degraded-banner{display:flex;align-items:center;gap:.5rem;padding:.5rem 1.875rem;
+  background:var(--amber-dim);border-bottom:1px solid color-mix(in srgb,var(--amber) 25%,transparent);
+  font-size:.72rem;color:var(--amber);font-weight:500;transition:background .4s}
+/* #16 Coverage bar */
+.cov-bar-wrap{margin-top:.4rem;height:4px;border-radius:2px;background:var(--bg3);overflow:hidden}
+.cov-bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--teal),var(--teal2));transition:width .6s ease}
+
 
 /* ── Search bar — bottom anchored, always visible ── */
 .search-bar{flex-shrink:0;border-top:1px solid var(--border2);background:var(--hdr-bg);
@@ -379,6 +396,47 @@ body{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;line-height:1.6;b
 .sg>*{opacity:0;animation:pIn .38s cubic-bezier(.22,1,.36,1) forwards}
 .sg>*:nth-child(1){animation-delay:.04s}.sg>*:nth-child(2){animation-delay:.09s}
 .sg>*:nth-child(3){animation-delay:.14s}.sg>*:nth-child(4){animation-delay:.19s}.sg>*:nth-child(5){animation-delay:.24s}
+
+/* ══════════════════════════════════════════════
+   AUTH PAGES  (login / signup)
+══════════════════════════════════════════════ */
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;position:relative;z-index:1}
+.auth-card{width:100%;max-width:420px;background:var(--bg1);border:1px solid var(--border2);border-radius:18px;padding:2.25rem 2rem;box-shadow:var(--shadow2);animation:pIn .38s cubic-bezier(.22,1,.36,1)}
+.auth-logo{display:flex;align-items:center;gap:.625rem;margin-bottom:1.875rem;justify-content:center}
+.auth-title{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:var(--t1);text-align:center;margin-bottom:.3rem}
+.auth-sub{font-size:.78rem;color:var(--t3);text-align:center;margin-bottom:1.5rem}
+.auth-field{display:flex;flex-direction:column;gap:.3rem;margin-bottom:1rem}
+.auth-label{font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--t3)}
+.auth-input-wrap{position:relative;display:flex;align-items:center}
+.auth-input{width:100%;padding:.6875rem .875rem;border-radius:9px;border:1px solid var(--border2);background:var(--input-bg);
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:.88rem;color:var(--t1);outline:none;transition:border-color .18s,box-shadow .18s}
+.auth-input:focus{border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-dim)}
+.auth-input.has-icon{padding-right:2.5rem}
+.auth-eye{position:absolute;right:.75rem;background:none;border:none;color:var(--t3);cursor:pointer;padding:.2rem;display:flex;align-items:center;transition:color .15s}
+.auth-eye:hover{color:var(--t2)}
+.auth-select{width:100%;padding:.6875rem .875rem;border-radius:9px;border:1px solid var(--border2);background:var(--input-bg);
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:.88rem;color:var(--t1);outline:none;appearance:none;cursor:pointer;
+  transition:border-color .18s,box-shadow .18s}
+.auth-select:focus{border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-dim)}
+.auth-btn{width:100%;padding:.75rem;border-radius:10px;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:.88rem;font-weight:600;background:linear-gradient(135deg,var(--indigo),var(--teal));color:#fff;
+  transition:opacity .15s,transform .1s;margin-top:.5rem;display:flex;align-items:center;justify-content:center;gap:.5rem}
+.auth-btn:hover{opacity:.9}.auth-btn:active{transform:scale(.98)}.auth-btn:disabled{opacity:.55;cursor:not-allowed}
+.auth-err{padding:.625rem .875rem;border-radius:8px;background:var(--rose-dim);border:1px solid color-mix(in srgb,var(--rose) 25%,transparent);
+  font-size:.78rem;color:var(--rose);display:flex;align-items:flex-start;gap:.4rem;margin-bottom:.75rem}
+.auth-switch{text-align:center;margin-top:1.25rem;font-size:.78rem;color:var(--t3)}
+.auth-switch button{background:none;border:none;color:var(--indigo);cursor:pointer;font-weight:600;font-size:.78rem;padding:0;transition:color .15s}
+.auth-switch button:hover{color:var(--indigo2)}
+.auth-divider{display:flex;align-items:center;gap:.75rem;margin:.875rem 0;color:var(--t4);font-size:.72rem}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border2)}
+/* user chip in header */
+.user-chip{display:flex;align-items:center;gap:.4rem;padding:.22rem .5rem .22rem .35rem;border-radius:999px;
+  background:var(--bg3);border:1px solid var(--border2);cursor:pointer;transition:background .15s,border-color .15s}
+.user-chip:hover{background:var(--bg4);border-color:var(--border3)}
+.user-chip-avatar{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--indigo),var(--teal));
+  display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:#fff;flex-shrink:0}
+.user-chip-name{font-size:.72rem;font-weight:600;color:var(--t2);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-chip-role{font-size:.58rem;color:var(--t4);font-weight:500}
 
 /* ── Responsive ── */
 @media(max-width:1100px){.lpanel{display:none}.qp-main{grid-template-columns:1fr}}
@@ -489,7 +547,7 @@ function _qtype(res){
 const TYPE_META={
   policy:  {label:'Policy Answer',  Icon:CheckCircle,  icolor:'var(--teal)',   title:'From your indexed documents'},
   general: {label:'General Knowledge',Icon:Globe,      icolor:'var(--indigo)', title:'From AI knowledge base'},
-  greeting:{label:'ComplianceAI',   Icon:MessageSquare, icolor:'var(--gold)',  title:'Your compliance assistant'},
+  greeting:{label:'AI Policy Assistant',   Icon:MessageSquare, icolor:'var(--gold)',  title:'Your compliance assistant'},
   fail:    {label:'No Answer',      Icon:AlertTriangle, icolor:'var(--rose)',  title:'Could not find an answer'},
 };
 
@@ -536,6 +594,40 @@ function _buildEmailText(res){
   lines.push('');
   lines.push('Powered by ComplianceAI');
   return lines.join('\n');
+}
+
+/* ── #15 Evidence panel — per-chunk citation with expandable excerpt ────────── */
+function CitationCard({citation:c}){
+  const [open,setOpen]=useState(false);
+  const hasExcerpt=!!(c.excerpt&&c.excerpt.trim().length>10);
+  return(
+    <div className="cit">
+      <div className="cit-hdr" onClick={()=>hasExcerpt&&setOpen(o=>!o)}>
+        <div style={{flex:1,minWidth:0}}>
+          <div className="cit-name">{c.policy_name}</div>
+          <div className="tags">
+            <span className="tag tb">{c.policy_id}</span>
+            <span className="tag tg">v{c.version}</span>
+            {c.page!=null&&<span className="tag tt">pg.{c.page}</span>}
+            {c.section&&<span className="tag tv" style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.section}</span>}
+          </div>
+        </div>
+        {hasExcerpt?(
+          <span className="cit-toggle">
+            {open?<><ChevronUp size={11}/>Hide</> :<><ChevronDown size={11}/>Evidence</>}
+          </span>
+        ):(
+          <ArrowUpRight size={13} color="var(--teal)" style={{flexShrink:0,opacity:.6}}/>
+        )}
+      </div>
+      {hasExcerpt&&open&&(
+        <div className="cit-excerpt">
+          <div className="cit-excerpt-label"><BookOpen size={9}/>Source passage</div>
+          <span>{c.excerpt}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const ANSWER_COLLAPSE_CHARS = 480; // show expand button if answer longer than this
@@ -645,23 +737,29 @@ function AnswerCard({res}){
         )}
       </div>
 
-      {/* Citations — grouped below answer, Gestalt proximity */}
+      {/* #18 Groq degradation banner — shown when LLM is unavailable */}
+      {res.llm_mode==='keyword_fallback'&&res.success&&(
+        <div className="degraded-banner">
+          <AlertTriangle size={11} style={{flexShrink:0}}/>
+          <span>
+            <strong>Keyword mode</strong> — answers are extracted directly from policy text.
+            Add a <strong>GROQ_API_KEY</strong> in your <code style={{fontSize:'.68rem',background:'rgba(0,0,0,.15)',padding:'0 .3rem',borderRadius:'3px'}}>.env</code> for AI-generated summaries.
+          </span>
+        </div>
+      )}
+
+      {/* #15 Citations with Evidence panel — expandable per-chunk excerpts */}
       {type==='policy'&&res.citations?.length>0&&(
         <div className="cits-section">
-          <div className="cits-label"><FileText size={9}/>Source Documents</div>
+          <div className="cits-label" style={{justifyContent:'space-between'}}>
+            <span style={{display:'flex',alignItems:'center',gap:'.375rem'}}><FileText size={9}/>Source Evidence</span>
+            <span style={{fontSize:'.6rem',color:'var(--t4)',fontWeight:400,letterSpacing:0,textTransform:'none'}}>
+              {res.citations.filter(c=>c.excerpt).length} passages
+            </span>
+          </div>
           <div className="cit-grid">
             {res.citations.map((c,i)=>(
-              <div className="cit" key={i}>
-                <div>
-                  <div className="cit-name">{c.policy_name}</div>
-                  <div className="tags">
-                    <span className="tag tb">{c.policy_id}</span>
-                    <span className="tag tg">v{c.version}</span>
-                    {c.page&&<span className="tag tt">pg.{c.page}</span>}
-                  </div>
-                </div>
-                <ArrowUpRight size={13} color="var(--teal)" style={{flexShrink:0}}/>
-              </div>
+              <CitationCard key={i} citation={c}/>
             ))}
           </div>
         </div>
@@ -725,7 +823,7 @@ function AnswerCard({res}){
 /* ══════════════════════════════════════════════
    QUERY PAGE — answer-first design
 ══════════════════════════════════════════════ */
-function QueryPage({status,auditArr,onLog,cachedCount}){
+function QueryPage({status,auditArr,onLog,cachedCount,llmMode}){
   const[role,setRole]   = useState('Senior Loan Officer');
   const[query,setQuery] = useState('');
   const[res,setRes]     = useState(null);
@@ -891,10 +989,14 @@ function PolicyCacheList({policies,loading,onDelete}){
       <div className="esub">Upload a PDF above to index it.</div>
     </div>
   );
+  // #16 max chunks across all policies — for normalising the coverage bar
+  const maxChunks = Math.max(...policies.map(p=>p.chunk_count||1), 1);
   return(
-    <div>{policies.map(pol=>(
+    <div>{policies.map(pol=>{
+      const covPct = Math.round(Math.min((pol.chunk_count/maxChunks)*100, 100));
+      return(
       <div className="pol-row" key={pol.policy_id}>
-        <div>
+        <div style={{minWidth:0}}>
           <div className="pol-name">{pol.policy_name||pol.policy_id}</div>
           <div className="pol-meta">
             <span className="tag tb" style={{fontSize:'.6rem'}}>{pol.policy_id}</span>
@@ -902,14 +1004,22 @@ function PolicyCacheList({policies,loading,onDelete}){
             <span className="tag tt" style={{fontSize:'.6rem'}}>{pol.chunk_count} chunks</span>
             <span className="tag tv" style={{fontSize:'.6rem'}}>{pol.risk_level}</span>
           </div>
-          <div style={{fontSize:'.65rem',color:'var(--t4)',marginTop:'.2rem'}}>Indexed {fmtDate(pol.indexed_at)} · {pol.required_role}</div>
+          <div style={{fontSize:'.65rem',color:'var(--t4)',marginTop:'.2rem'}}>
+            Indexed {fmtDate(pol.indexed_at)} · {pol.required_role}
+            {pol.effective_date&&<span> · Effective {pol.effective_date}</span>}
+          </div>
+          {/* #16 Coverage bar — relative chunk density vs largest doc */}
+          <div className="cov-bar-wrap" title={`${pol.chunk_count} chunks (${covPct}% relative coverage)`}>
+            <div className="cov-bar-fill" style={{width:`${covPct}%`}}/>
+          </div>
         </div>
         <CheckCircle size={12} color="var(--teal)" title="Indexed"/>
         <button className="btn btn-danger" style={{padding:'.3rem .55rem',fontSize:'.7rem'}} onClick={()=>handleDelete(pol.policy_id)} disabled={deleting===pol.policy_id} title="Remove">
           {deleting===pol.policy_id?<span className="spin"/>:<Trash2 size={11}/>}
         </button>
       </div>
-    ))}</div>
+      );
+    })}</div>
   );
 }
 
@@ -1060,15 +1170,195 @@ function AuditPage({log}){
 /* ══════════════════════════════════════════════
    ROOT APP
 ══════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════
+   AUTH PAGE  — Login / Signup
+══════════════════════════════════════════════ */
+
+
+function AuthPage({onAuth}){
+  const[mode,setMode]         = useState('login');   // 'login'|'signup'
+  const[fullName,setFullName] = useState('');
+  const[email,setEmail]       = useState('');
+  const[password,setPw]       = useState('');
+  const[role,setRole]         = useState('Senior Loan Officer');
+  const[showPw,setShowPw]     = useState(false);
+  const[busy,setBusy]         = useState(false);
+  const[err,setErr]           = useState(null);
+
+  const submit = useCallback(async()=>{
+    setErr(null);
+    if(!email.trim()||!password.trim()){setErr('Email and password are required.');return;}
+    if(mode==='signup'&&!fullName.trim()){setErr('Full name is required.');return;}
+    if(mode==='signup'&&password.length<8){setErr('Password must be at least 8 characters.');return;}
+    setBusy(true);
+    try{
+      let data;
+      if(mode==='login'){
+        data = await login(email.trim().toLowerCase(), password);
+      } else {
+        data = await signup(fullName.trim(), email.trim().toLowerCase(), password, role);
+      }
+      auth.setTokens(data.access_token, data.refresh_token);
+      auth.setUser(data.user);
+      onAuth(data.user);
+    } catch(e){
+      setErr(e.message||'Something went wrong. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  },[mode,fullName,email,password,role]);
+
+  const onKey = useCallback(e=>{if(e.key==='Enter')submit();},[submit]);
+
+  return(
+    <div className="auth-wrap">
+      <div className="auth-card">
+        {/* Logo */}
+        <div className="auth-logo">
+          <div className="brand-mark"><Shield size={15} color="#fff" strokeWidth={2.5}/></div>
+          <div>
+            <div className="brand-name">ComplianceAI</div>
+            <div className="brand-sub">Policy Intelligence</div>
+          </div>
+        </div>
+
+        <div className="auth-title">{mode==='login'?'Welcome back':'Create account'}</div>
+        <div className="auth-sub">
+          {mode==='login'
+            ?'Sign in to access your compliance workspace.'
+            :'Register to start querying policy documents.'}
+        </div>
+
+        {/* Error */}
+        {err&&(
+          <div className="auth-err">
+            <AlertTriangle size={13} style={{flexShrink:0,marginTop:1}}/>
+            <span>{err}</span>
+          </div>
+        )}
+
+        {/* Full name — signup only */}
+        {mode==='signup'&&(
+          <div className="auth-field">
+            <label className="auth-label">Full Name</label>
+            <input
+              className="auth-input"
+              type="text"
+              placeholder="Priya Sharma"
+              value={fullName}
+              onChange={e=>setFullName(e.target.value)}
+              onKeyDown={onKey}
+              autoComplete="name"
+              disabled={busy}
+            />
+          </div>
+        )}
+
+        {/* Email */}
+        <div className="auth-field">
+          <label className="auth-label">Email</label>
+          <input
+            className="auth-input"
+            type="email"
+            placeholder="you@bank.com"
+            value={email}
+            onChange={e=>setEmail(e.target.value)}
+            onKeyDown={onKey}
+            autoComplete="email"
+            disabled={busy}
+          />
+        </div>
+
+        {/* Password */}
+        <div className="auth-field">
+          <label className="auth-label">Password</label>
+          <div className="auth-input-wrap">
+            <input
+              className="auth-input has-icon"
+              type={showPw?'text':'password'}
+              placeholder={mode==='login'?'Your password':'Min. 8 characters'}
+              value={password}
+              onChange={e=>setPw(e.target.value)}
+              onKeyDown={onKey}
+              autoComplete={mode==='login'?'current-password':'new-password'}
+              disabled={busy}
+            />
+            <button className="auth-eye" onClick={()=>setShowPw(s=>!s)} tabIndex={-1}>
+              {showPw?<EyeOff size={14}/>:<Eye size={14}/>}
+            </button>
+          </div>
+        </div>
+
+        {/* Role — signup only */}
+        {mode==='signup'&&(
+          <div className="auth-field">
+            <label className="auth-label">Role</label>
+            <select
+              className="auth-select"
+              value={role}
+              onChange={e=>setRole(e.target.value)}
+              disabled={busy}
+            >
+              {ROLES.map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Submit */}
+        <button className="auth-btn" onClick={submit} disabled={busy}>
+          {busy
+            ? <><RefreshCw size={14} style={{animation:'spin .7s linear infinite'}}/> {mode==='login'?'Signing in…':'Creating account…'}</>
+            : mode==='login'
+              ? <><LogIn size={14}/> Sign In</>
+              : <><UserPlus size={14}/> Create Account</>
+          }
+        </button>
+
+        {/* Switch mode */}
+        <div className="auth-switch">
+          {mode==='login'
+            ? <>Don't have an account? <button onClick={()=>{setMode('signup');setErr(null);}}>Sign up</button></>
+            : <>Already have an account? <button onClick={()=>{setMode('login');setErr(null);}}>Sign in</button></>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
   const[tab,setTab]     = useState('query');
   const[status,setStatus] = useState('checking');
   const[audit,setAudit]   = useState([]);
   const[cachedCount,setCachedCount] = useState(null);
+  const[llmMode,setLlmMode] = useState(null);
+  const[currentUser,setCurrentUser] = useState(()=>auth.getUser());
   const[themeMode,setThemeMode] = useState(()=>{
     try{const s=localStorage.getItem('crai_theme');if(s&&['light','dark','system'].includes(s))return s;}catch{}
     return 'system';
   });
+
+  // Restore session from stored refresh token on mount
+  useEffect(()=>{
+    if(!currentUser && auth.getRefresh()){
+      import('./services/api').then(({refreshTokens,auth:a})=>{
+        refreshTokens(a.getRefresh()).then(data=>{
+          a.setTokens(data.access_token, data.refresh_token);
+          a.setUser(data.user);
+          setCurrentUser(data.user);
+        }).catch(()=>{ a.clear(); setCurrentUser(null); });
+      }).catch(()=>{});
+    }
+  },[]);
+
+  const handleLogout = useCallback(async()=>{
+    const rt = auth.getRefresh();
+    try{ if(rt) await logoutApi(rt); } catch{}
+    auth.clear();
+    setCurrentUser(null);
+    setAudit([]);
+  },[]);
 
   useEffect(()=>{
     const apply=dark=>applyTokens(dark?DARK:LIGHT);
@@ -1086,14 +1376,33 @@ export default function App(){
 
   useEffect(()=>{
     const chk=async()=>{
-      try{const h=await healthCheck();setStatus('connected');setCachedCount(h.policies_indexed??null);}
-      catch{setStatus('disconnected');}
+      try{
+        const h=await healthCheck();
+        setStatus('connected');
+        setCachedCount(h.policies_indexed??null);
+        setLlmMode(h.llm_mode??null);   // #18
+      }
+      catch{setStatus('disconnected');setLlmMode(null);}
     };
     chk();const id=setInterval(chk,30000);return()=>clearInterval(id);
   },[]);
 
   const addLog=e=>setAudit(p=>[e,...p]);
   const NAV=[{id:'query',label:'Query',Icon:Search},{id:'upload',label:'Upload',Icon:Upload},{id:'audit',label:'Audit',Icon:Activity}];
+
+  // Show auth page if not logged in
+  if(!currentUser){
+    return(
+      <>
+        <style>{CSS}</style>
+        <div className="bg-mesh"/>
+        <div className="bg-grid"/>
+        <AuthPage onAuth={user=>{setCurrentUser(user);}}/>
+      </>
+    );
+  }
+
+  const initials = (currentUser.full_name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 
   return(
     <>
@@ -1117,8 +1426,42 @@ export default function App(){
             ))}
           </nav>
           <div className="hdr-right">
+            {/* #18 LLM mode indicator — always visible in header */}
+            {llmMode==='keyword_fallback'&&(
+              <div style={{display:'flex',alignItems:'center',gap:'.3rem',padding:'.22rem .625rem',borderRadius:'999px',
+                background:'var(--amber-dim)',border:'1px solid color-mix(in srgb,var(--amber) 30%,transparent)',
+                fontSize:'.63rem',fontWeight:600,color:'var(--amber)',letterSpacing:'.05em'}}>
+                <AlertTriangle size={9}/>KEYWORD MODE
+              </div>
+            )}
+            {llmMode==='groq'&&(
+              <div style={{display:'flex',alignItems:'center',gap:'.3rem',padding:'.22rem .625rem',borderRadius:'999px',
+                background:'var(--teal-dim)',border:'1px solid color-mix(in srgb,var(--teal) 30%,transparent)',
+                fontSize:'.63rem',fontWeight:600,color:'var(--teal)',letterSpacing:'.05em'}}>
+                <Zap size={9}/>GROQ AI
+              </div>
+            )}
             <StatusPill status={status}/>
             <ThemeSW mode={themeMode} set={setThemeMode}/>
+            {/* User chip + logout */}
+            <div className="user-chip" title={`${currentUser.email} — ${currentUser.role}`}>
+              <div className="user-chip-avatar">{initials}</div>
+              <div>
+                <div className="user-chip-name">{currentUser.full_name||currentUser.email}</div>
+                <div className="user-chip-role">{currentUser.role}</div>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              style={{display:'flex',alignItems:'center',gap:'.3rem',padding:'.3rem .625rem',borderRadius:'8px',
+                border:'1px solid var(--border2)',background:'none',color:'var(--t3)',cursor:'pointer',
+                fontSize:'.72rem',fontWeight:500,transition:'all .15s'}}
+              onMouseEnter={e=>{e.currentTarget.style.color='var(--rose)';e.currentTarget.style.borderColor='var(--rose)';}}
+              onMouseLeave={e=>{e.currentTarget.style.color='var(--t3)';e.currentTarget.style.borderColor='var(--border2)';}}
+            >
+              <LogOut size={12}/> Sign out
+            </button>
           </div>
         </header>
 
@@ -1150,7 +1493,7 @@ export default function App(){
           </aside>
 
           <main className="content">
-            {tab==='query' &&<QueryPage  key="q" status={status} auditArr={audit} onLog={addLog} cachedCount={cachedCount}/>}
+            {tab==='query' &&<QueryPage  key="q" status={status} auditArr={audit} onLog={addLog} cachedCount={cachedCount} llmMode={llmMode}/>}
             {tab==='upload'&&<div style={{flex:1,overflowY:'auto'}}><UploadPage key="u" onCacheUpdate={setCachedCount}/></div>}
             {tab==='audit' &&<div style={{flex:1,overflowY:'auto'}}><AuditPage  key="a" log={audit}/></div>}
           </main>

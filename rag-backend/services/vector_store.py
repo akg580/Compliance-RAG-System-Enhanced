@@ -1,27 +1,21 @@
 """
-Persistent BM25 + TF-IDF Vector Store  v2
-==========================================
-Improvements over v1:
-  - BM25 scoring (Okapi BM25) replaces raw TF-IDF — handles term saturation,
-    better for keyword-dense policy text; no external dependency needed
-  - Server-side RBAC enforced in search() — filters by required_role using
-    a role hierarchy (Junior Officer < Senior Loan Officer < Credit Manager
-    < Risk Officer < Senior Management)
-  - Citation excerpt included in search results (from chunk metadata)
-  - All mutations still atomic-write to disk (unchanged)
+Persistent BM25 + TF-IDF Vector Store
+No external dependencies — pure Python implementation.
+Data persists in rag_cache/ across server restarts.
 """
 
-import json, math, re, time, hashlib
+import json
+import math
+import re
+import time
+import hashlib
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from models import UserRole
 
-
-# ── Role hierarchy (server-side RBAC) ────────────────────────────────────────
-# Higher number = higher clearance. A user can see docs at their level or below.
-
+# ── Role hierarchy ────────────────────────────────────────────────────────────
 ROLE_LEVEL: Dict[str, int] = {
     "Junior Officer":      1,
     "Senior Loan Officer": 2,
@@ -30,49 +24,15 @@ ROLE_LEVEL: Dict[str, int] = {
     "Senior Management":   5,
 }
 
-def _role_level(role_str: str) -> int:
-    """Return numeric level for a role string (enum value or plain string)."""
-    # UserRole enum has .value; plain strings work directly
-    key = role_str.value if hasattr(role_str, "value") else str(role_str)
+def _role_level(key: str) -> int:
     return ROLE_LEVEL.get(key, 1)
 
-
-# ── Tokenizer ─────────────────────────────────────────────────────────────────
-
-def _tokenize(text: str) -> List[str]:
-    return [w for w in re.findall(r"\w+", text.lower()) if len(w) > 2]
-
-
-# ── BM25 scorer (Okapi BM25, no external deps) ───────────────────────────────
-# Parameters: k1=1.5 (term frequency saturation), b=0.75 (length normalisation)
-
+# ── BM25 parameters ───────────────────────────────────────────────────────────
 BM25_K1 = 1.5
 BM25_B  = 0.75
 
-def _bm25_score(
-    query_words: List[str],
-    doc_words:   List[str],
-    doc_tf:      Dict[str, float],      # raw term freq (count / total)
-    doc_len:     int,
-    avg_doc_len: float,
-    word_doc_freq: Dict[str, int],
-    num_docs:    int,
-) -> float:
-    score = 0.0
-    for w in query_words:
-        if w not in doc_tf:
-            continue
-        # IDF (smooth, no zero division)
-        df  = word_doc_freq.get(w, 0)
-        idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1)
-        # TF with saturation + length normalisation
-        tf_raw = doc_tf[w] * doc_len          # recover raw count from ratio
-        tf_bm25 = (tf_raw * (BM25_K1 + 1)) / (
-            tf_raw + BM25_K1 * (1 - BM25_B + BM25_B * doc_len / max(avg_doc_len, 1))
-        )
-        score += idf * tf_bm25
-    return score
-
+def _tokenize(text: str) -> List[str]:
+    return [w for w in re.findall(r"\w+", text.lower()) if len(w) > 2]
 
 def _calc_tf(words: List[str]) -> Dict[str, float]:
     counts: Dict[str, int] = defaultdict(int)
@@ -81,16 +41,23 @@ def _calc_tf(words: List[str]) -> Dict[str, float]:
     total = max(len(words), 1)
     return {w: c / total for w, c in counts.items()}
 
-
-def _file_hash(path: str) -> str:
-    h = hashlib.sha256()
-    try:
-        with open(path, "rb") as f:
-            h.update(f.read(65536))
-    except OSError:
-        pass
-    return h.hexdigest()
-
+def _bm25_score(
+    query_words: List[str],
+    doc_tf: Dict[str, float],
+    doc_len: int,
+    avg_doc_len: float,
+    idf: Dict[str, float],
+) -> float:
+    score = 0.0
+    for w in query_words:
+        if w not in doc_tf:
+            continue
+        tf_raw  = doc_tf[w] * doc_len
+        tf_bm25 = (tf_raw * (BM25_K1 + 1)) / (
+            tf_raw + BM25_K1 * (1 - BM25_B + BM25_B * doc_len / max(avg_doc_len, 1))
+        )
+        score += idf.get(w, 0.0) * tf_bm25
+    return score
 
 def _atomic_write(path: Path, data: Any) -> None:
     tmp = path.with_suffix(".tmp")
@@ -99,171 +66,179 @@ def _atomic_write(path: Path, data: Any) -> None:
     tmp.replace(path)
 
 
-# ── VectorStore ───────────────────────────────────────────────────────────────
-
 class VectorStore:
+    PERSIST_DIR   = Path("./rag_cache")
+    INDEX_FILE    = PERSIST_DIR / "index.json"
+    REG_FILE      = PERSIST_DIR / "registry.json"
+    WFREQ_FILE    = PERSIST_DIR / "word_freq.json"
 
-    PERSIST_DIR = Path("./rag_cache")
-    INDEX_FILE  = PERSIST_DIR / "index.json"
-    REG_FILE    = PERSIST_DIR / "registry.json"
-    FREQ_FILE   = PERSIST_DIR / "word_freq.json"
-
-    def __init__(self) -> None:
-        self.PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+    def __init__(self):
+        self.PERSIST_DIR.mkdir(exist_ok=True)
+        self.docs:     List[Dict]        = []
+        self.registry: Dict[str, Any]    = {}
+        self.word_doc_freq: Dict[str, int] = defaultdict(int)
         self._load()
-        print(f"Vector store ready — {self.doc_count} chunks, "
-              f"{len(self.registry)} policies (BM25 scoring + RBAC)")
 
-    # ── Persistence ──────────────────────────────────────────────────────────
-
+    # ── Persistence ───────────────────────────────────────────────────────────
     def _load(self) -> None:
-        def _r(p, d):
-            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else d
-        self.documents:    List[Dict]       = _r(self.INDEX_FILE, [])
-        self.registry:     Dict[str, Dict]  = _r(self.REG_FILE,   {})
-        self.word_doc_freq: Dict[str, int]  = _r(self.FREQ_FILE,  {})
-        self.doc_count = len(self.documents)
-        self._avg_doc_len = (
-            sum(len(d.get("words", [])) for d in self.documents) / max(self.doc_count, 1)
-        )
+        if self.INDEX_FILE.exists():
+            try:
+                self.docs = json.loads(self.INDEX_FILE.read_text("utf-8"))
+            except Exception:
+                self.docs = []
+        if self.REG_FILE.exists():
+            try:
+                self.registry = json.loads(self.REG_FILE.read_text("utf-8"))
+            except Exception:
+                self.registry = {}
+        if self.WFREQ_FILE.exists():
+            try:
+                self.word_doc_freq = defaultdict(int, json.loads(self.WFREQ_FILE.read_text("utf-8")))
+            except Exception:
+                self.word_doc_freq = defaultdict(int)
 
-    def _save(self) -> None:
-        _atomic_write(self.INDEX_FILE,  self.documents)
-        _atomic_write(self.REG_FILE,    self.registry)
-        _atomic_write(self.FREQ_FILE,   self.word_doc_freq)
+        # Backfill older cache entries missing computed fields
+        changed = False
+        for doc in self.docs:
+            if "doc_len" not in doc or "tf" not in doc:
+                words = _tokenize(doc.get("text", ""))
+                doc["doc_len"] = len(words)
+                doc["tf"] = _calc_tf(words)
+                changed = True
+        if changed:
+            self._flush()
 
-    def _recompute_avg_len(self) -> None:
-        self._avg_doc_len = (
-            sum(len(d.get("words", [])) for d in self.documents) / max(len(self.documents), 1)
-        )
+    def _flush(self) -> None:
+        _atomic_write(self.INDEX_FILE, self.docs)
+        _atomic_write(self.REG_FILE, self.registry)
+        _atomic_write(self.WFREQ_FILE, dict(self.word_doc_freq))
 
-    # ── Public API ───────────────────────────────────────────────────────────
+    # ── Properties ────────────────────────────────────────────────────────────
+    @property
+    def doc_count(self) -> int:
+        return len(self.docs)
 
-    def is_policy_indexed(self, policy_id: str) -> bool:
-        return policy_id in self.registry
-
-    def find_indexed_file(self, file_path: str) -> Optional[str]:
-        fh = _file_hash(file_path)
-        for pid, info in self.registry.items():
-            if info.get("file_hash") == fh:
-                return pid
-        return None
-
+    # ── Indexing ──────────────────────────────────────────────────────────────
     def add_chunks(self, chunks: List[Dict], file_hash: str = "") -> int:
         if not chunks:
             return 0
+        pid   = chunks[0]["metadata"]["policy_id"]
+        pname = chunks[0]["metadata"].get("policy_name", pid)
+
+        # Remove old version of this policy if re-uploading
+        self.clear_policy(pid, flush=False)
+
+        new_docs = []
         for chunk in chunks:
             words = _tokenize(chunk["text"])
             tf    = _calc_tf(words)
-            for w in set(words):
-                self.word_doc_freq[w] = self.word_doc_freq.get(w, 0) + 1
-            self.documents.append({
+            doc   = {
                 "id":       chunk["id"],
                 "text":     chunk["text"],
                 "metadata": chunk["metadata"],
-                "words":    words,
                 "tf":       tf,
                 "doc_len":  len(words),
-            })
+            }
+            new_docs.append(doc)
+            for w in set(words):
+                self.word_doc_freq[w] += 1
 
-        self.doc_count = len(self.documents)
-        self._recompute_avg_len()
+        self.docs.extend(new_docs)
 
-        meta = chunks[0]["metadata"]
-        pid  = meta.get("policy_id", "UNKNOWN")
         self.registry[pid] = {
-            "policy_id":     pid,
-            "policy_name":   meta.get("policy_name", ""),
-            "version":       meta.get("version", "1.0"),
-            "effective_date": meta.get("effective_date", ""),
-            "required_role": meta.get("required_role", "Junior Officer"),
-            "risk_level":    meta.get("risk_level", "Low"),
-            "chunk_count":   len(chunks),
-            "indexed_at":    time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "file_hash":     file_hash,
+            "policy_id":      pid,
+            "policy_name":    pname,
+            "version":        chunks[0]["metadata"].get("version", "1.0"),
+            "effective_date": chunks[0]["metadata"].get("effective_date", ""),
+            "required_role":  chunks[0]["metadata"].get("required_role", "Junior Officer"),
+            "risk_level":     chunks[0]["metadata"].get("risk_level", "Low"),
+            "chunk_count":    len(new_docs),
+            "indexed_at":     str(int(time.time())),
+            "file_hash":      file_hash,
         }
-        self._save()
-        print(f"Indexed {len(chunks)} chunks for '{pid}' — total {self.doc_count}")
-        return len(chunks)
+        self._flush()
+        return len(new_docs)
 
-    def clear_policy(self, policy_id: str) -> int:
-        before = len(self.documents)
-        self.documents = [d for d in self.documents if d["metadata"].get("policy_id") != policy_id]
-        removed = before - len(self.documents)
-        # Rebuild word frequencies
-        self.word_doc_freq = {}
-        for doc in self.documents:
-            for w in set(doc.get("words", [])):
-                self.word_doc_freq[w] = self.word_doc_freq.get(w, 0) + 1
-        self.doc_count = len(self.documents)
-        self._recompute_avg_len()
-        self.registry.pop(policy_id, None)
-        self._save()
-        print(f"Removed {removed} chunks for policy '{policy_id}'")
-        return removed
+    def clear_policy(self, pid: str, flush: bool = True) -> int:
+        before = len(self.docs)
+        removed_words: Dict[str, int] = defaultdict(int)
+        kept = []
+        for doc in self.docs:
+            if doc["metadata"]["policy_id"] == pid:
+                for w in doc.get("tf", {}).keys():
+                    removed_words[w] += 1
+            else:
+                kept.append(doc)
+        self.docs = kept
+        for w, cnt in removed_words.items():
+            self.word_doc_freq[w] = max(0, self.word_doc_freq.get(w, 0) - cnt)
+        self.registry.pop(pid, None)
+        if flush:
+            self._flush()
+        return before - len(self.docs)
 
+    # ── Search ────────────────────────────────────────────────────────────────
     def search(self, query: str, user_role: UserRole, top_k: int = 5) -> List[Dict]:
-        """
-        BM25 search with server-side RBAC filtering.
-
-        Only returns chunks whose policy required_role level ≤ user's role level.
-        This enforces access control server-side, not just in the UI.
-        """
-        if not self.documents:
+        if not self.docs:
             return []
+        q_words    = _tokenize(query)
+        n_docs     = len(self.docs)
+        avg_dl     = sum(d.get("doc_len", 1) for d in self.docs) / n_docs
 
-        q_words   = _tokenize(query)
-        user_lvl  = _role_level(user_role)
-        scores: List[Dict] = []
+        # IDF for query words
+        idf: Dict[str, float] = {}
+        for w in q_words:
+            df     = self.word_doc_freq.get(w, 0)
+            idf[w] = math.log((n_docs - df + 0.5) / (df + 0.5) + 1)
 
-        for doc in self.documents:
-            # ── RBAC gate (server-side) ───────────────────────────────────
-            doc_required_role = doc["metadata"].get("required_role", "Junior Officer")
-            doc_lvl = _role_level(doc_required_role)
+        user_lvl = _role_level(str(user_role.value if hasattr(user_role, "value") else user_role))
+        results  = []
+        for doc in self.docs:
+            doc_required = doc["metadata"].get("required_role", "Junior Officer")
+            doc_lvl      = _role_level(doc_required)
             if user_lvl < doc_lvl:
-                continue    # user lacks clearance for this document
+                continue   # RBAC filter
+            score = _bm25_score(q_words, doc.get("tf", {}), doc.get("doc_len", 1), avg_dl, idf)
+            if score > 0:
+                results.append({**doc, "score": score})
 
-            # ── BM25 score ────────────────────────────────────────────────
-            bm25 = _bm25_score(
-                q_words,
-                doc.get("words", []),
-                doc.get("tf", {}),
-                doc.get("doc_len", 1),
-                self._avg_doc_len,
-                self.word_doc_freq,
-                max(self.doc_count, 1),
-            )
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:top_k]
 
-            if bm25 > 0:
-                scores.append({
-                    "chunk_id":       doc["id"],
-                    "text":           doc["text"],
-                    "metadata":       doc["metadata"],
-                    "relevance_score": bm25,
-                    # Include excerpt for Evidence panel in UI
-                    "excerpt":        doc["metadata"].get("excerpt", doc["text"][:200]),
-                })
+    # ── Lookups ───────────────────────────────────────────────────────────────
+    def is_policy_indexed(self, pid: str) -> bool:
+        return pid in self.registry
 
-        # Normalise BM25 scores to 0–1 range for consistent threshold comparison
-        if scores:
-            max_score = max(s["relevance_score"] for s in scores)
-            if max_score > 0:
-                for s in scores:
-                    s["relevance_score"] = s["relevance_score"] / max_score
+    def find_indexed_file(self, path: str) -> Optional[str]:
+        """Return policy_id if this file (by hash) is already indexed."""
+        try:
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                h.update(f.read(65536))
+            fhash = h.hexdigest()
+        except OSError:
+            return None
+        for pid, meta in self.registry.items():
+            if meta.get("file_hash") == fhash:
+                return pid
+        return None
 
-        scores.sort(key=lambda x: x["relevance_score"], reverse=True)
-        results = scores[:top_k]
-        if results:
-            print(f"Query hit — top BM25 score {results[0]['relevance_score']:.3f} "
-                  f"(role={user_role}, filtered by RBAC)")
-        return results
-
-    def get_collection_stats(self) -> Dict[str, Any]:
+    def get_collection_stats(self) -> Dict:
+        policies = []
+        for pid, meta in self.registry.items():
+            policies.append({
+                "policy_id":      pid,
+                "policy_name":    meta.get("policy_name", pid),
+                "version":        meta.get("version", "1.0"),
+                "effective_date": meta.get("effective_date", ""),
+                "required_role":  meta.get("required_role", "Junior Officer"),
+                "risk_level":     meta.get("risk_level", "Low"),
+                "chunk_count":    meta.get("chunk_count", 0),
+                "indexed_at":     meta.get("indexed_at", ""),
+            })
         return {
-            "total_chunks":    self.doc_count,
+            "total_chunks":    len(self.docs),
             "unique_policies": len(self.registry),
-            "collection_name": "persistent_bm25",
-            "cache_dir":       str(self.PERSIST_DIR.resolve()),
-            "policies":        list(self.registry.values()),
-            "avg_doc_len_words": round(self._avg_doc_len, 1),
+            "cache_dir":       str(self.PERSIST_DIR),
+            "policies":        policies,
         }

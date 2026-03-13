@@ -1,27 +1,55 @@
-﻿# Render.com blueprint
-# Update the service names, env vars, and URLs as needed for your project.
+﻿# render.yaml — ComplianceAI deploy blueprint
+# Place this file at the REPO ROOT (same level as package.json)
+# render.com → New → Blueprint → connect repo → Render reads this file
+
 services:
+
+  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
   - type: web
-    name: rag-backend
+    name: compliance-ai-backend
     runtime: python
+    region: singapore
+    plan: free
     rootDir: rag-backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /livez
+    autoDeploy: true
+
     envVars:
-      - key: ALLOWED_ORIGINS
-        value: https://your-frontend.onrender.com
       - key: GROQ_API_KEY
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
+
       - key: JWT_SECRET
         sync: false
 
+      - key: ALLOWED_ORIGINS
+        value: https://compliance-ai-frontend.onrender.com
+
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
+  # ── Frontend (React/Vite static site) ─────────────────────────────────────
   - type: web
-    name: rag-frontend
-    runtime: node
-    buildCommand: npm install && npm run build
-    startCommand: npx serve -s dist -l $PORT
+    name: compliance-ai-frontend
+    runtime: static
+    region: singapore
+    plan: free
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+
     envVars:
-      - key: VITE_API_BASE
-        value: https://your-backend.onrender.com
+      - key: VITE_API_URL
+        value: https://compliance-ai-backend.onrender.com
+
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

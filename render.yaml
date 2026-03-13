@@ -1,9 +1,9 @@
-﻿# render.yaml — ComplianceAI deploy blueprint
-# Must be at repo ROOT (same level as package.json)
+﻿# render.yaml — ComplianceAI
+# MUST be at repo root (same folder as package.json)
 
 services:
 
-  # ── Backend (FastAPI) ─────────────────────────────────────────────────────
+  # ── Python backend ────────────────────────────────────────────────────────
   - type: web
     name: compliance-ai-backend
     runtime: python
@@ -27,7 +27,7 @@ services:
       - key: PYTHONUNBUFFERED
         value: "1"
 
-  # ── Frontend (React/Vite — STATIC SITE, not a web server) ────────────────
+  # ── React/Vite frontend — STATIC SITE ────────────────────────────────────
   - type: static
     name: compliance-ai-frontend
     buildCommand: npm install && npm run build

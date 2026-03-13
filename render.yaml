@@ -1,54 +1,42 @@
 ﻿# render.yaml — ComplianceAI deploy blueprint
-# Place this file at the REPO ROOT (same level as package.json)
-# render.com → New → Blueprint → connect repo → Render reads this file
+# Repo root (same level as package.json)
 
 services:
 
-  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
+  # ── Backend (FastAPI) ─────────────────────────────────────────────────────
   - type: web
     name: compliance-ai-backend
     runtime: python
     region: singapore
-    plan: free
     rootDir: rag-backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /livez
     autoDeploy: true
-
     envVars:
       - key: GROQ_API_KEY
         sync: false
-
       - key: JWT_SECRET
         sync: false
-
       - key: ALLOWED_ORIGINS
         value: https://compliance-ai-frontend.onrender.com
-
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
-
       - key: REFRESH_TOKEN_EXPIRE_DAYS
         value: "7"
-
       - key: PYTHONUNBUFFERED
         value: "1"
 
-  # ── Frontend (React/Vite static site) ─────────────────────────────────────
+  # ── Frontend (React/Vite static site) ────────────────────────────────────
   - type: web
     name: compliance-ai-frontend
     runtime: static
-   # region: singapore
-    plan: free
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     autoDeploy: true
-
     envVars:
       - key: VITE_API_URL
         value: https://compliance-ai-backend.onrender.com
-
     routes:
       - type: rewrite
         source: /*

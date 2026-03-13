@@ -39,7 +39,7 @@ services:
   - type: web
     name: compliance-ai-frontend
     runtime: static
-    region: singapore
+   # region: singapore
     plan: free
     buildCommand: npm ci && npm run build
     staticPublishPath: dist

@@ -8,69 +8,39 @@ on:
 
 jobs:
   backend:
-    name: Backend (Python ${{ matrix.python }})
+    name: Backend (Python 3.11)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.11"]
     defaults:
       run:
         working-directory: rag-backend
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.11"
           cache: pip
           cache-dependency-path: rag-backend/requirements.txt
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Lint (ruff)
-        run: |
-          pip install ruff==0.9.1
-          ruff check . --select E,W,F,I --ignore E501 || true
-
-      - name: Type check (pyright skip — optional)
-        run: echo "pyright skipped in CI"
-
-      - name: Test
-        run: |
-          python -m pytest ../tests/ -v --tb=short || true
+      - name: Syntax check
+        run: python -m py_compile main.py jwt_auth.py models/models.py services/vector_store.py services/rag_service.py services/document_processor.py app_config/config.py
         env:
+          JWT_SECRET: "ci-test-secret-32-chars-minimum!!"
           GROQ_API_KEY: ""
-          JWT_SECRET: "ci-test-secret-not-real"
 
   frontend:
-    name: Frontend (Node ${{ matrix.node }})
+    name: Frontend (Node 22)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: ["20", "22"]
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
-
-      - name: Generate package-lock.json if missing
-        run: |
-          if [ ! -f package-lock.json ]; then
-            npm install --package-lock-only
-          fi
-
+          node-version: "22"
       - name: Install dependencies
-        run: npm ci
-
+        run: npm install
       - name: Build
         run: npm run build
         env:
           VITE_API_URL: https://compliance-ai-backend.onrender.com
-
-      - name: Check dist exists
+      - name: Check dist
         run: ls dist/

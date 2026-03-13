@@ -2,13 +2,13 @@
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt ./
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app
-COPY . ./
+COPY . .
 
-ENV PYTHONUNBUFFERED=1
+RUN mkdir -p uploads rag_cache
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 10000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000", "--workers", "1"]

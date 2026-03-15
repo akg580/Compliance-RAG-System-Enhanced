@@ -1,19 +1,17 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build output — let Render build fresh every time
 dist/
 build/
 coverage/
 
-# Environment — NEVER commit real secrets
+# Environment — NEVER commit secrets
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-.env.example  # Keep .env.example with placeholder values for reference
-.rag-backend/.env.example
 
 # Python
 __pycache__/
@@ -30,7 +28,7 @@ env/
 rag-backend/venv/
 rag-backend/.venv/
 
-# RAG data (auto-generated at runtime)
+# RAG runtime data
 rag-backend/rag_cache/
 rag-backend/uploads/
 rag-backend/users.json
@@ -47,5 +45,4 @@ rag-backend/audit.jsonl
 .DS_Store
 Thumbs.db
 
-# NOTE: package-lock.json is intentionally NOT ignored — commit it for reproducible installs
-# NOTE: yarn.lock is also NOT ignored if you use yarn
+# NOTE: package-lock.json intentionally NOT ignored

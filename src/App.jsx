@@ -1174,13 +1174,7 @@ function AuditPage({log}){
 /* ══════════════════════════════════════════════
    AUTH PAGE  — Login / Signup
 ══════════════════════════════════════════════ */
-const ROLES = [
-  'Junior Officer',
-  'Senior Loan Officer',
-  'Credit Manager',
-  'Risk Officer',
-  'Senior Management',
-];
+// ROLES defined above at top of file
 
 function AuthPage({onAuth}){
   const[mode,setMode]         = useState('login');   // 'login'|'signup'

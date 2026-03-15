@@ -547,7 +547,7 @@ function _qtype(res){
 const TYPE_META={
   policy:  {label:'Policy Answer',  Icon:CheckCircle,  icolor:'var(--teal)',   title:'From your indexed documents'},
   general: {label:'General Knowledge',Icon:Globe,      icolor:'var(--indigo)', title:'From AI knowledge base'},
-  greeting:{label:'AI Policy Assistant',   Icon:MessageSquare, icolor:'var(--gold)',  title:'Your compliance assistant'},
+  greeting:{label:'ComplianceAI',   Icon:MessageSquare, icolor:'var(--gold)',  title:'Your compliance assistant'},
   fail:    {label:'No Answer',      Icon:AlertTriangle, icolor:'var(--rose)',  title:'Could not find an answer'},
 };
 
@@ -1174,7 +1174,13 @@ function AuditPage({log}){
 /* ══════════════════════════════════════════════
    AUTH PAGE  — Login / Signup
 ══════════════════════════════════════════════ */
-
+const ROLES = [
+  'Junior Officer',
+  'Senior Loan Officer',
+  'Credit Manager',
+  'Risk Officer',
+  'Senior Management',
+];
 
 function AuthPage({onAuth}){
   const[mode,setMode]         = useState('login');   // 'login'|'signup'
